@@ -1,0 +1,335 @@
+{
+  "info": {
+    "name": "LifeOS API (Phase 1)",
+    "description": "Collection cho backend LifeOS theo API_CONVENTIONS.md §8 và SYSTEM_ARCHITECTURE.md §4.\n\nTrạng thái cài đặt (2026-11-06): đã có register, verify-email, resend-verification. Login/refresh/logout/devices đang làm ở bước 1c; /me, settings, forgot/reset ở 1d; Project/Category/Task ở Giai đoạn 2; Sync ở Giai đoạn 3. Request chưa cài đặt sẽ trả 404 NOT_FOUND.\n\nLogin và Refresh tự lưu accessToken/refreshToken/deviceId vào biến collection. Các request 🔒 dùng Bearer {{accessToken}}.\n\nToken xác minh email / đặt lại mật khẩu: ở dev lấy trong Mailpit (http://localhost:8025) sau khi có outbox worker (Giai đoạn 4); trước đó lấy từ outbox_events.payload ->> 'token'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "host", "value": "http://localhost:8080" },
+    { "key": "baseUrl", "value": "{{host}}/api/v1" },
+    { "key": "email", "value": "an@example.test" },
+    { "key": "password", "value": "mat-khau-dev-123" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "deviceId", "value": "" },
+    { "key": "verificationToken", "value": "" },
+    { "key": "resetToken", "value": "" },
+    { "key": "projectId", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "taskId", "value": "" },
+    { "key": "version", "value": "1" },
+    { "key": "syncCursor", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Correlation id cho mỗi request (API_CONVENTIONS §2)",
+          "pm.request.headers.upsert({ key: 'X-Correlation-Id', value: crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}') });"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /actuator/health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{host}}/actuator/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth (công khai)",
+      "auth": { "type": "noauth" },
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"An\",\n  \"timezone\": \"Asia/Ho_Chi_Minh\"\n}" },
+            "description": "202, thân rỗng, giống hệt nhau dù email đã tồn tại. Trường lạ → 400 MALFORMED_REQUEST."
+          }
+        },
+        {
+          "name": "Verify email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/verify-email",
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}" },
+            "description": "204; token sai/hết hạn/đã dùng → 400 AUTH_VERIFICATION_TOKEN_INVALID."
+          }
+        },
+        {
+          "name": "Resend verification",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/resend-verification",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', b.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', b.refreshToken);",
+                  "  pm.collectionVariables.set('deviceId', b.deviceId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"deviceId\": null,\n  \"device\": { \"name\": \"Postman\", \"platform\": \"ANDROID\", \"appVersion\": \"1.0.0\" }\n}" },
+            "description": "Đặt deviceId = {{deviceId}} để đăng nhập lại trên cùng thiết bị (thu hồi family cũ, D75)."
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', b.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', b.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "description": "Xoay vòng. Gửi lại refresh token cũ → 401 và thu hồi cả family (D48)."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/logout",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          }
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/forgot-password",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\"\n}" }
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/reset-password",
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"mat-khau-moi-456\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Account & Settings 🔒",
+      "item": [
+        { "name": "Get me", "request": { "method": "GET", "url": "{{baseUrl}}/me" } },
+        {
+          "name": "Update me",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/me",
+            "body": { "mode": "raw", "raw": "{\n  \"displayName\": \"An Nguyễn\"\n}" }
+          }
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/me/change-password",
+            "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"mat-khau-moi-456\"\n}" }
+          }
+        },
+        { "name": "Get settings", "request": { "method": "GET", "url": "{{baseUrl}}/me/settings" } },
+        {
+          "name": "Update settings",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/me/settings",
+            "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}},\n  \"timezone\": \"Asia/Ho_Chi_Minh\",\n  \"weekStartDay\": 1\n}" },
+            "description": "version bắt buộc; lệch → 409 ENTITY_VERSION_CONFLICT kèm currentVersion."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Devices 🔒",
+      "item": [
+        { "name": "List devices", "request": { "method": "GET", "url": "{{baseUrl}}/devices" } },
+        { "name": "Revoke device", "request": { "method": "DELETE", "url": "{{baseUrl}}/devices/{{deviceId}}" } }
+      ]
+    },
+    {
+      "name": "Projects 🔒",
+      "item": [
+        {
+          "name": "List projects",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects?archived=false&limit=50", "host": ["{{baseUrl}}"], "path": ["projects"], "query": [{ "key": "archived", "value": "false" }, { "key": "limit", "value": "50" }, { "key": "cursor", "value": "", "disabled": true }] } }
+        },
+        {
+          "name": "Create project",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('projectId', crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects",
+            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{projectId}}\",\n  \"name\": \"Dự án mẫu\",\n  \"description\": null\n}" }
+          }
+        },
+        { "name": "Get project", "request": { "method": "GET", "url": "{{baseUrl}}/projects/{{projectId}}" } },
+        {
+          "name": "Update project",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/projects/{{projectId}}", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}},\n  \"name\": \"Đổi tên\"\n}" } }
+        },
+        {
+          "name": "Archive project",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/projects/{{projectId}}/archive", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" } }
+        },
+        {
+          "name": "Unarchive project",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/projects/{{projectId}}/unarchive", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" } }
+        },
+        { "name": "Project progress", "request": { "method": "GET", "url": "{{baseUrl}}/projects/{{projectId}}/progress" } },
+        { "name": "Delete project", "request": { "method": "DELETE", "url": "{{baseUrl}}/projects/{{projectId}}?version={{version}}" } }
+      ]
+    },
+    {
+      "name": "Categories 🔒",
+      "item": [
+        { "name": "List categories", "request": { "method": "GET", "url": "{{baseUrl}}/categories?limit=50" } },
+        {
+          "name": "Create category",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('categoryId', crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/categories", "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{categoryId}}\",\n  \"name\": \"Công việc\"\n}" } }
+        },
+        { "name": "Get category", "request": { "method": "GET", "url": "{{baseUrl}}/categories/{{categoryId}}" } },
+        {
+          "name": "Update category",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/categories/{{categoryId}}", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}},\n  \"name\": \"Cá nhân\"\n}" } }
+        },
+        { "name": "Delete category", "request": { "method": "DELETE", "url": "{{baseUrl}}/categories/{{categoryId}}?version={{version}}" } }
+      ]
+    },
+    {
+      "name": "Tasks 🔒",
+      "item": [
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tasks?status=OPEN&sort=dueDate:asc&limit=50",
+              "host": ["{{baseUrl}}"], "path": ["tasks"],
+              "query": [
+                { "key": "status", "value": "OPEN" },
+                { "key": "projectId", "value": "{{projectId}}", "disabled": true },
+                { "key": "inbox", "value": "true", "disabled": true },
+                { "key": "categoryId", "value": "{{categoryId}}", "disabled": true },
+                { "key": "priority", "value": "HIGH", "disabled": true },
+                { "key": "dueFrom", "value": "2026-11-06", "disabled": true },
+                { "key": "dueTo", "value": "2026-11-13", "disabled": true },
+                { "key": "sort", "value": "dueDate:asc" },
+                { "key": "limit", "value": "50" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create task",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('taskId', crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/tasks",
+            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{taskId}}\",\n  \"title\": \"Mua sữa\",\n  \"description\": null,\n  \"priority\": \"NONE\",\n  \"dueDate\": \"2026-11-07\",\n  \"dueTime\": \"08:30\",\n  \"projectId\": null,\n  \"categoryId\": null\n}" }
+          }
+        },
+        { "name": "Get task", "request": { "method": "GET", "url": "{{baseUrl}}/tasks/{{taskId}}" } },
+        {
+          "name": "Update task",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/tasks/{{taskId}}", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}},\n  \"title\": \"Mua sữa tươi\",\n  \"dueTime\": null\n}" }, "description": "JSON Merge Patch: trường vắng = không đổi; null = xóa giá trị." }
+        },
+        {
+          "name": "Complete task",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/tasks/{{taskId}}/complete", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" } }
+        },
+        {
+          "name": "Reopen task",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/tasks/{{taskId}}/reopen", "body": { "mode": "raw", "raw": "{\n  \"version\": {{version}}\n}" } }
+        },
+        { "name": "Delete task", "request": { "method": "DELETE", "url": "{{baseUrl}}/tasks/{{taskId}}?version={{version}}" } }
+      ]
+    },
+    {
+      "name": "Sync 🔒",
+      "item": [
+        {
+          "name": "Push",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('mutationId', crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));", "pm.variables.set('newTaskId', crypto.randomUUID ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/sync/push",
+            "body": { "mode": "raw", "raw": "{\n  \"mutations\": [\n    {\n      \"mutationId\": \"{{mutationId}}\",\n      \"entityType\": \"task\",\n      \"entityId\": \"{{newTaskId}}\",\n      \"operation\": \"CREATE\",\n      \"baseVersion\": 0,\n      \"payload\": {\n        \"title\": \"Mua sữa\",\n        \"description\": null,\n        \"status\": \"OPEN\",\n        \"priority\": \"NONE\",\n        \"dueDate\": \"2026-11-06\",\n        \"dueTime\": null,\n        \"projectId\": null,\n        \"categoryId\": null\n      }\n    }\n  ]\n}" },
+            "description": "Tối đa 50 mutation; payload ≤ 64 KB. Gửi lại cùng mutationId → DUPLICATE."
+          }
+        },
+        {
+          "name": "Pull",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 200) { pm.collectionVariables.set('syncCursor', pm.response.json().nextCursor); }"] } }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/sync/pull?cursor={{syncCursor}}&limit=200", "host": ["{{baseUrl}}"], "path": ["sync", "pull"], "query": [{ "key": "cursor", "value": "{{syncCursor}}" }, { "key": "limit", "value": "200" }] }
+          }
+        }
+      ]
+    }
+  ]
+}

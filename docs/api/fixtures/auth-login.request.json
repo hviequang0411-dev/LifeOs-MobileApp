@@ -1,0 +1,10 @@
+{
+  "email": "an.nguyen@example.test",
+  "password": "mat-khau-gia-123",
+  "deviceId": "3d6f4a1e-8b7c-4d2e-9f10-2a3b4c5d6e7f",
+  "device": {
+    "name": "Pixel 8",
+    "platform": "ANDROID",
+    "appVersion": "1.0.0"
+  }
+}

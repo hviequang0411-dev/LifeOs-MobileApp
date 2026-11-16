@@ -1,0 +1,31 @@
+logging:
+  structured:
+    format:
+      console: ecs   # log JSON; correlationId nằm trong MDC
+
+spring:
+  # Production migration chạy bằng image/job riêng với role DDL; runtime app chỉ dùng role DML.
+  flyway:
+    enabled: false
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:10000}
+  # Prod không cho phép credential SMTP rỗng/ẩn sau default của application.yml.
+  mail:
+    username: ${SMTP_USER}
+    password: ${SMTP_PASSWORD}
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  # Bắt buộc khai báo dải proxy thật; rỗng/trust-all không được dùng ở production.
+  tomcat:
+    remoteip:
+      internal-proxies: ${TRUSTED_PROXIES}
+
+lifeos:
+  # Production bắt buộc persistent disk; không rơi về java.io.tmpdir.
+  export:
+    dir: ${EXPORT_DIR}

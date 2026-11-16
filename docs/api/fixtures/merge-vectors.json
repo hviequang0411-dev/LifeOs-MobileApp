@@ -1,0 +1,195 @@
+{
+  "description": "Bộ vector kiểm thử hợp nhất xung đột 3 bên (3-way field-level merge) và quy tắc ưu tiên server giữa baseSnapshot, serverCurrent và clientLocal cho SyncEngine trên Mobile (PWP4).",
+  "version": "1.0.0",
+  "vectors": [
+    {
+      "id": "MERGE-01",
+      "description": "Hai bên sửa hai trường khác nhau của Task: tự động gộp cả hai thay đổi mà không cần hỏi người dùng",
+      "entityType": "task",
+      "strategy": "FIELD_3WAY",
+      "baseSnapshot": {
+        "id": "11111111-1111-4111-8111-111111111101",
+        "title": "Viết báo cáo tuần",
+        "description": "Bản nháp đầu tiên",
+        "priority": "MEDIUM",
+        "status": "TODO",
+        "dueDate": "2026-11-10"
+      },
+      "serverCurrent": {
+        "id": "11111111-1111-4111-8111-111111111101",
+        "title": "Viết báo cáo tuần",
+        "description": "Bản nháp đã bổ sung số liệu tháng 11",
+        "priority": "MEDIUM",
+        "status": "TODO",
+        "dueDate": "2026-11-10",
+        "version": 3
+      },
+      "clientLocal": {
+        "id": "11111111-1111-4111-8111-111111111101",
+        "title": "Viết báo cáo tuần",
+        "description": "Bản nháp đầu tiên",
+        "priority": "HIGH",
+        "status": "IN_PROGRESS",
+        "dueDate": "2026-11-10"
+      },
+      "expectedOutcome": {
+        "autoMerged": true,
+        "conflictingFields": [],
+        "mergedPayload": {
+          "id": "11111111-1111-4111-8111-111111111101",
+          "title": "Viết báo cáo tuần",
+          "description": "Bản nháp đã bổ sung số liệu tháng 11",
+          "priority": "HIGH",
+          "status": "IN_PROGRESS",
+          "dueDate": "2026-11-10"
+        },
+        "newBaseVersion": 3
+      }
+    },
+    {
+      "id": "MERGE-02",
+      "description": "Hai bên cùng sửa trường title thành hai giá trị khác nhau: đánh dấu xung đột đúng trường title để hiển thị Bottom Sheet",
+      "entityType": "task",
+      "strategy": "FIELD_3WAY",
+      "baseSnapshot": {
+        "id": "11111111-1111-4111-8111-111111111102",
+        "title": "Họp nhóm thiết kế",
+        "priority": "MEDIUM",
+        "status": "TODO"
+      },
+      "serverCurrent": {
+        "id": "11111111-1111-4111-8111-111111111102",
+        "title": "Họp nhóm thiết kế UI lúc 15h",
+        "priority": "HIGH",
+        "status": "TODO",
+        "version": 5
+      },
+      "clientLocal": {
+        "id": "11111111-1111-4111-8111-111111111102",
+        "title": "Họp chốt kiến trúc Mobile",
+        "priority": "MEDIUM",
+        "status": "TODO"
+      },
+      "expectedOutcome": {
+        "autoMerged": false,
+        "conflictingFields": ["title"],
+        "mergedPayload": {
+          "id": "11111111-1111-4111-8111-111111111102",
+          "title": "Họp chốt kiến trúc Mobile",
+          "priority": "HIGH",
+          "status": "TODO"
+        },
+        "newBaseVersion": 5
+      }
+    },
+    {
+      "id": "MERGE-03",
+      "description": "Hai bên cùng sửa một trường thành cùng một giá trị giống hệt nhau: tự động gộp, không coi là xung đột",
+      "entityType": "project",
+      "strategy": "FIELD_3WAY",
+      "baseSnapshot": {
+        "id": "22222222-2222-4222-8222-222222222201",
+        "name": "Dự án Q4",
+        "color": "#1B6B50",
+        "status": "ACTIVE"
+      },
+      "serverCurrent": {
+        "id": "22222222-2222-4222-8222-222222222201",
+        "name": "Dự án Q4 - Trọng điểm",
+        "color": "#1B6B50",
+        "status": "ACTIVE",
+        "version": 2
+      },
+      "clientLocal": {
+        "id": "22222222-2222-4222-8222-222222222201",
+        "name": "Dự án Q4 - Trọng điểm",
+        "color": "#D97724",
+        "status": "ACTIVE"
+      },
+      "expectedOutcome": {
+        "autoMerged": true,
+        "conflictingFields": [],
+        "mergedPayload": {
+          "id": "22222222-2222-4222-8222-222222222201",
+          "name": "Dự án Q4 - Trọng điểm",
+          "color": "#D97724",
+          "status": "ACTIVE"
+        },
+        "newBaseVersion": 2
+      }
+    },
+    {
+      "id": "MERGE-04",
+      "description": "Giao dịch tài chính (finance_transaction): khi xảy ra CONFLICT version, yêu cầu người dùng xác nhận tường minh trên các trường số tiền/tài khoản bị lệch",
+      "entityType": "finance_transaction",
+      "strategy": "FINANCE_STRICT",
+      "baseSnapshot": {
+        "id": "33333333-3333-4333-8333-333333333301",
+        "amount": "150000",
+        "note": "Ăn trưa",
+        "accountId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+      },
+      "serverCurrent": {
+        "id": "33333333-3333-4333-8333-333333333301",
+        "amount": "165000",
+        "note": "Ăn trưa (đã cộng VAT)",
+        "accountId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        "version": 4
+      },
+      "clientLocal": {
+        "id": "33333333-3333-4333-8333-333333333301",
+        "amount": "180000",
+        "note": "Ăn trưa",
+        "accountId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+      },
+      "expectedOutcome": {
+        "autoMerged": false,
+        "conflictingFields": ["amount"],
+        "mergedPayload": {
+          "id": "33333333-3333-4333-8333-333333333301",
+          "amount": "180000",
+          "note": "Ăn trưa (đã cộng VAT)",
+          "accountId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+        },
+        "newBaseVersion": 4
+      }
+    },
+    {
+      "id": "MERGE-05",
+      "description": "Ghi chú Markdown (note): khi cả hai bên cùng sửa trường content, tạo xung đột trên trường content và hỗ trợ lưu thành bản sao nếu người dùng muốn giữ cả hai",
+      "entityType": "note",
+      "strategy": "NOTE_CONFLICT_COPY_CAPABLE",
+      "baseSnapshot": {
+        "id": "44444444-4444-4444-8444-444444444401",
+        "title": "Sổ tay kiến trúc",
+        "content": "# Mục 1\nNội dung gốc",
+        "isPinned": false
+      },
+      "serverCurrent": {
+        "id": "44444444-4444-4444-8444-444444444401",
+        "title": "Sổ tay kiến trúc",
+        "content": "# Mục 1\nNội dung cập nhật từ thiết bị A",
+        "isPinned": true,
+        "version": 7
+      },
+      "clientLocal": {
+        "id": "44444444-4444-4444-8444-444444444401",
+        "title": "Sổ tay kiến trúc",
+        "content": "# Mục 1\nNội dung cập nhật từ thiết bị B khi ngoại tuyến",
+        "isPinned": false
+      },
+      "expectedOutcome": {
+        "autoMerged": false,
+        "conflictingFields": ["content"],
+        "mergedPayload": {
+          "id": "44444444-4444-4444-8444-444444444401",
+          "title": "Sổ tay kiến trúc",
+          "content": "# Mục 1\nNội dung cập nhật từ thiết bị B khi ngoại tuyến",
+          "isPinned": true
+        },
+        "newBaseVersion": 7
+      }
+    }
+  ]
+}
+

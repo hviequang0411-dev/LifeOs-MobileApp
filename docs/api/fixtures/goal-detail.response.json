@@ -1,0 +1,39 @@
+{
+  "goal" : {
+    "id" : "f9aa482c-b4d9-4345-b84c-d28813711c11",
+    "title" : "Chạy 10 km",
+    "description" : "Mô tả",
+    "startOn" : "2027-01-01",
+    "targetOn" : "2027-06-30",
+    "status" : "ACTIVE",
+    "statusChangedAt" : null,
+    "version" : 1,
+    "createdAt" : "2026-11-07T13:43:10.607903Z",
+    "updatedAt" : "2026-11-07T13:43:10.607903Z"
+  },
+  "progress" : {
+    "method" : "MILESTONES",
+    "value" : 0.0,
+    "completedMilestones" : 0,
+    "totalMilestones" : 1,
+    "doneTasks" : 0,
+    "totalTasks" : 1,
+    "allMilestonesCompleted" : false
+  },
+  "milestones" : [ {
+    "milestone" : {
+      "id" : "78b78773-b8eb-43f3-ac21-fe43c15ccc87",
+      "goalId" : "f9aa482c-b4d9-4345-b84c-d28813711c11",
+      "title" : "5 km",
+      "dueOn" : "2027-03-01",
+      "position" : 1000,
+      "completedAt" : null,
+      "version" : 1,
+      "createdAt" : "2026-11-07T13:43:10.607903Z",
+      "updatedAt" : "2026-11-07T13:43:10.607903Z"
+    },
+    "doneTasks" : 0,
+    "totalTasks" : 1,
+    "progress" : 0.0
+  } ]
+}

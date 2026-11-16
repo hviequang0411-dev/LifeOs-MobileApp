@@ -1,0 +1,19 @@
+# Profile "test" cho test tích hợp. Datasource do PostgresTestContainer cấp (IntegrationTestBase).
+# Secret dưới đây CHỈ dùng cho test, sinh ngẫu nhiên, không dùng ở bất kỳ môi trường nào khác.
+lifeos:
+  security:
+    jwt:
+      secret: qtM6wn1AKtfsura+Mfd+qELSjTPMeSpp5bsj7B66+uJwIwlulE3EQqRFGhKYAF96
+      kid: test-k1
+  notification:
+    unsubscribe-secret: test-only-unsubscribe-hmac-key-9c1f4b7e2a6d8053
+  sync:
+    snapshot-hmac-secret: test-only-snapshot-hmac-key-4e7a1d9c05b3f862
+
+springdoc:
+  api-docs:
+    enabled: true
+
+logging:
+  level:
+    com.lifeos: DEBUG

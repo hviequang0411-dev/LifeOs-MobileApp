@@ -1,0 +1,22 @@
+{
+  "periodType": "DAY",
+  "periodStart": "2026-11-10",
+  "summary": "Một việc trọng tâm trước buổi họp và một khoảng trống để xử lý phát sinh.",
+  "items": [
+    {
+      "title": "Hoàn thiện báo cáo",
+      "reason": "Task ưu tiên cao và đến hạn hôm nay.",
+      "priority": "HIGH",
+      "suggestedStartAt": "2026-11-10T09:00:00+07:00",
+      "suggestedEndAt": "2026-11-10T11:00:00+07:00",
+      "sourceRefs": [
+        {
+          "domain": "TASK_CALENDAR",
+          "entityType": "task",
+          "entityId": "20000000-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  ],
+  "contextMessageId": "10000000-0000-4000-8000-000000000004"
+}

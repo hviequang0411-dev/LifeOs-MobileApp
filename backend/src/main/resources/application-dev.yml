@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/lifeos}
+    username: ${DB_USER:lifeos}
+    password: ${DB_PASSWORD:lifeos}
+  # mailpit trong docker-compose.yml: SMTP 1025 không xác thực, xem thư tại http://localhost:8025
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+      mail.smtp.starttls.required: false
+
+# JWT_SECRET không có mặc định kể cả ở dev (secret dev/test/prod khác nhau, SECURITY_RULES §12).
+lifeos:
+  # CHỈ cho máy dev (prod bắt buộc NOTIFICATION_UNSUBSCRIBE_SECRET riêng) [PROPOSED].
+  notification:
+    unsubscribe-secret: ${NOTIFICATION_UNSUBSCRIBE_SECRET:dev-only-unsubscribe-secret-change-me-0123456789}
+  # CHỈ cho máy dev (prod bắt buộc SNAPSHOT_HMAC_SECRET riêng — đợt sửa F9).
+  sync:
+    snapshot-hmac-secret: ${SNAPSHOT_HMAC_SECRET:dev-only-snapshot-hmac-secret-change-me-0123456789}
+  mail:
+    from: ${MAIL_FROM:LifeOS Dev <no-reply@lifeos.localhost>}
+    app-base-url: ${APP_BASE_URL:http://localhost:8080}
+
+springdoc:
+  api-docs:
+    enabled: true
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-}] %logger{36} - %msg %kvp%n"
+  level:
+    com.lifeos: DEBUG

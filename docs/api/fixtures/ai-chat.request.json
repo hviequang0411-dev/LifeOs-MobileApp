@@ -1,0 +1,5 @@
+{
+  "message": "Hôm nay tôi nên ưu tiên việc nào?",
+  "mode": "CHAT",
+  "contextDomains": ["TASK_CALENDAR", "GOAL"]
+}

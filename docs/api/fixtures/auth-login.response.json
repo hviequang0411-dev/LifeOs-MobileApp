@@ -1,0 +1,12 @@
+{
+  "tokenType": "Bearer",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsImtpZCI6ImZha2UifQ.eyJzdWIiOiJmYWtlIn0.ZmFrZS1zaWduYXR1cmU",
+  "expiresIn": 900,
+  "refreshToken": "ZmFrZS1yZWZyZXNoLXRva2VuLWZvci1maXh0dXJlcy0wMDE",
+  "deviceId": "3d6f4a1e-8b7c-4d2e-9f10-2a3b4c5d6e7f",
+  "user": {
+    "id": "8f1c2d3e-4a5b-4c6d-8e7f-901a2b3c4d5e",
+    "email": "an.nguyen@example.test",
+    "displayName": "An"
+  }
+}

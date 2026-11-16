@@ -1,0 +1,158 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "deploy/**", "ops/**", "docs/api/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    paths: ["backend/**", "deploy/**", "ops/**", "docs/api/**", ".github/workflows/backend-ci.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Migration immutability
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-status "$base"...HEAD -- backend/src/main/resources/db/migration \
+            | awk '$1 != "A" {print}')
+          if [ -n "$changed" ]; then
+            echo "Applied migrations must not be modified, removed, or renamed"
+            echo "$changed"
+            exit 1
+          fi
+
+      - name: Clean build and verify
+        run: mvn -B -ntp clean verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.run_id }}
+          retention-days: 7
+          path: |
+            backend/target/surefire-reports
+            backend/target/failsafe-reports
+
+  production-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: runtime
+          load: true
+          push: false
+          tags: lifeos-backend:ci
+          cache-from: type=gha,scope=backend-runtime
+          cache-to: type=gha,mode=max,scope=backend-runtime
+
+      - name: Build migration image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: migrations
+          load: true
+          push: false
+          tags: lifeos-migrations:ci
+
+      - name: Fail-fast without production secrets
+        run: |
+          if docker run --rm -e SPRING_PROFILES_ACTIVE=prod lifeos-backend:ci; then
+            echo "Production image unexpectedly started without required config"
+            exit 1
+          fi
+
+      - name: Container smoke with PostgreSQL
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f lifeos-ci-app lifeos-ci-db >/dev/null 2>&1 || true; docker network rm lifeos-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          db_password=$(openssl rand -hex 24)
+          jwt_secret=$(openssl rand -base64 48 | tr -d '\n')
+          unsubscribe_secret=$(openssl rand -hex 32)
+          docker network create lifeos-ci
+          docker run -d --name lifeos-ci-db --network lifeos-ci \
+            -e POSTGRES_DB=lifeos -e POSTGRES_USER=lifeos -e POSTGRES_PASSWORD="$db_password" postgres:17-alpine
+          for i in $(seq 1 30); do docker exec lifeos-ci-db pg_isready -U lifeos -d lifeos && break; sleep 2; done
+          docker run -d --name lifeos-ci-app --network lifeos-ci -p 127.0.0.1:18080:8080 \
+            -e SPRING_PROFILES_ACTIVE=dev -e DB_URL=jdbc:postgresql://lifeos-ci-db:5432/lifeos \
+            -e DB_USER=lifeos -e DB_PASSWORD="$db_password" -e JWT_SECRET="$jwt_secret" \
+            -e NOTIFICATION_UNSUBSCRIBE_SECRET="$unsubscribe_secret" lifeos-backend:ci
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:18080/actuator/health/readiness | grep -q '"status":"UP"'; then exit 0; fi
+            sleep 2
+          done
+          docker logs lifeos-ci-app
+          exit 1
+
+      - name: Generate SBOM
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/syft:v1.18.1 lifeos-backend:ci -o cyclonedx-json > lifeos-backend.sbom.json
+
+      - name: Scan runtime image
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.58.1 image --exit-code 1 --severity HIGH,CRITICAL \
+            --ignore-unfixed lifeos-backend:ci
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-sbom-${{ github.run_id }}
+          retention-days: 30
+          path: lifeos-backend.sbom.json
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

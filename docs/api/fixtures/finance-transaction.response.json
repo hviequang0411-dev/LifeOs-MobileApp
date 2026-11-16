@@ -1,0 +1,15 @@
+{
+  "id": "6f1c2a9e-3b7d-4c51-9e2a-0d8b7f4a1c33",
+  "accountId": "2b8e4f10-7c3a-4d9e-b1f2-5a6c7d8e9f01",
+  "categoryId": null,
+  "kind": "EXPENSE",
+  "amount": "125000",
+  "currency": "VND",
+  "occurredOn": "2026-11-07",
+  "note": "Ăn trưa",
+  "recurringTransactionId": null,
+  "recurrenceDate": null,
+  "version": 1,
+  "createdAt": "2026-11-07T03:20:00.123456Z",
+  "updatedAt": "2026-11-07T03:20:00.123456Z"
+}

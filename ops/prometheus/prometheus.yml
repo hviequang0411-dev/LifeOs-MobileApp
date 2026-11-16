@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: lifeos-backend
+
+rule_files:
+  - /etc/prometheus/rules/lifeos-alerts.yml
+  # Enable only after the corresponding backend/AI metric producers exist.
+  # - /etc/prometheus/rules/lifeos-future-alerts.yml
+
+scrape_configs:
+  - job_name: lifeos-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [backend:8080]
+    # DWP6 blocker: configure a private/authenticated scrape path before enabling in production.
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  - job_name: lifeos-ops-textfile
+    static_configs:
+      - targets: [node-exporter:9100]

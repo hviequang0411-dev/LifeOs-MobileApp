@@ -1,0 +1,20 @@
+{
+  "conversationId": "10000000-0000-4000-8000-000000000001",
+  "userMessage": {
+    "id": "10000000-0000-4000-8000-000000000002",
+    "role": "USER",
+    "content": "Hôm nay tôi nên ưu tiên việc nào?",
+    "mode": "CHAT",
+    "contextAvailable": false,
+    "createdAt": "2026-11-10T08:00:00Z"
+  },
+  "assistantMessage": {
+    "id": "10000000-0000-4000-8000-000000000003",
+    "role": "ASSISTANT",
+    "content": "Ưu tiên hoàn thiện báo cáo trước cuộc họp lúc 14:00.",
+    "mode": "CHAT",
+    "contextAvailable": true,
+    "createdAt": "2026-11-10T08:00:03Z"
+  },
+  "actionProposals": []
+}

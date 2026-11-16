@@ -1,0 +1,19 @@
+{
+  "messageId": "10000000-0000-4000-8000-000000000003",
+  "capturedAt": "2026-11-10T08:00:01Z",
+  "domains": ["TASK_CALENDAR", "GOAL"],
+  "entities": [
+    {
+      "domain": "TASK_CALENDAR",
+      "entityType": "task",
+      "entityId": "20000000-0000-4000-8000-000000000001",
+      "entityVersion": 3,
+      "fields": {
+        "title": "Hoàn thiện báo cáo",
+        "priority": "HIGH",
+        "dueDate": "2026-11-10"
+      }
+    }
+  ],
+  "truncated": false
+}

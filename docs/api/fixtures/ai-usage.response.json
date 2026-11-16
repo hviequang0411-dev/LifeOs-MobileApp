@@ -1,0 +1,19 @@
+{
+  "from": "2026-11-10",
+  "to": "2026-11-10",
+  "days": [
+    {
+      "date": "2026-11-10",
+      "requests": 2,
+      "inputTokens": 1840,
+      "outputTokens": 320,
+      "estimatedCostMicrousd": 6880
+    }
+  ],
+  "totals": {
+    "requests": 2,
+    "inputTokens": 1840,
+    "outputTokens": 320,
+    "estimatedCostMicrousd": 6880
+  }
+}

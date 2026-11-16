@@ -1,0 +1,89 @@
+name: deploy-staging
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build-scan-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Verify exact commit before publishing images
+        working-directory: backend
+        run: mvn -B -ntp clean verify
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normalize registry path
+        run: echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Build and push runtime
+        id: runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: runtime
+          push: true
+          tags: ${{ env.REGISTRY }}/lifeos-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend-runtime
+          cache-to: type=gha,mode=max,scope=backend-runtime
+
+      - name: Build and push migrations
+        id: migrations
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: migrations
+          push: true
+          tags: ${{ env.REGISTRY }}/lifeos-migrations:${{ github.sha }}
+
+      - name: Scan immutable runtime image
+        run: |
+          docker run --rm aquasec/trivy:0.58.1 image --exit-code 1 --severity HIGH,CRITICAL \
+            --ignore-unfixed "$REGISTRY/lifeos-backend@${{ steps.runtime.outputs.digest }}"
+
+      - name: Write release manifest
+        run: |
+          jq -n --arg commit '${{ github.sha }}' \
+            --arg runtime "$REGISTRY/lifeos-backend@${{ steps.runtime.outputs.digest }}" \
+            --arg migrations "$REGISTRY/lifeos-migrations@${{ steps.migrations.outputs.digest }}" \
+            '{commit:$commit,runtimeImage:$runtime,migrationImage:$migrations,stagingRunId:"${{ github.run_id }}"}' \
+            > release-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-manifest
+          retention-days: 30
+          path: release-manifest.json
+
+      - name: Migrate and deploy exact digests to Render staging
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_MIGRATION_SERVICE_ID: ${{ vars.RENDER_MIGRATION_SERVICE_ID }}
+          RENDER_RUNTIME_SERVICE_ID: ${{ vars.RENDER_RUNTIME_SERVICE_ID }}
+          MIGRATION_IMAGE: ${{ env.REGISTRY }}/lifeos-migrations@${{ steps.migrations.outputs.digest }}
+          RUNTIME_IMAGE: ${{ env.REGISTRY }}/lifeos-backend@${{ steps.runtime.outputs.digest }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          RUN_MIGRATION: "true"
+        run: bash deploy/scripts/render-deploy.sh

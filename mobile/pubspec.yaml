@@ -1,0 +1,71 @@
+name: lifeos_mobile
+description: LifeOS — Ứng dụng quản lý cuộc sống cá nhân Offline-First (Android & iOS).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  drift: ^2.22.1
+  sqlite3: ^2.4.7
+  sqlite3_flutter_libs: ^0.5.27
+  dio: ^5.7.0
+  flutter_secure_storage: ^9.2.2
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  intl: any
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  collection: ^1.18.0
+  flutter_local_notifications: 20.1.0
+  timezone: 0.10.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  drift_dev: ^2.22.1
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
+  generate: true
+  fonts:
+    - family: LifeOsSans
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Roboto-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 600
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 800
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Roboto-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+    - family: MaterialIcons
+      fonts:
+        - asset: assets/fonts/MaterialIcons-Regular.otf
+

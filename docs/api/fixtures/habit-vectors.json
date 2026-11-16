@@ -1,0 +1,101 @@
+{
+  "description": "Vector dùng chung Java–Dart cho chuỗi và thống kê habit (PHASE_2 D230, D233, D234; HAB-05). Mỗi ca: lịch, ngày đầu tuần (ISO 1 = Thứ Hai … 7 = Chủ Nhật), 'hôm nay' theo múi giờ người dùng, các check-in còn sống (ngày → DONE/SKIPPED) và kết quả mong đợi. completionRate là chuỗi thập phân 4 chữ số hoặc null. Đổi múi giờ (D244) chỉ làm đổi 'today'; ngày đã lưu không đổi.",
+  "cases": [
+    {
+      "name": "daily-skip-giu-chuoi-ngay-trong-lam-dut",
+      "schedule": {"type": "DAILY", "weekdays": null, "timesPerWeek": null, "intervalDays": null, "startOn": "2026-11-01", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-07",
+      "checkins": {"2026-11-01": "DONE", "2026-11-02": "DONE", "2026-11-04": "DONE", "2026-11-05": "SKIPPED", "2026-11-06": "DONE"},
+      "expected": {
+        "currentStreak": 2,
+        "longestStreak": 2,
+        "stats": {"from": "2026-11-01", "to": "2026-11-07", "scheduled": 6, "done": 4, "skipped": 1, "missed": 1, "completionRate": "0.8000"}
+      }
+    },
+    {
+      "name": "weekdays-t2-t4-t6-check-in-ngoai-lich-khong-tinh",
+      "schedule": {"type": "WEEKDAYS", "weekdays": 21, "timesPerWeek": null, "intervalDays": null, "startOn": "2026-11-02", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-13",
+      "checkins": {"2026-11-02": "DONE", "2026-11-04": "DONE", "2026-11-08": "DONE", "2026-11-09": "DONE", "2026-11-11": "SKIPPED"},
+      "expected": {
+        "currentStreak": 1,
+        "longestStreak": 2,
+        "stats": {"from": "2026-11-02", "to": "2026-11-13", "scheduled": 5, "done": 3, "skipped": 1, "missed": 1, "completionRate": "0.7500"}
+      }
+    },
+    {
+      "name": "every-3-days-ngay-den-lich-da-qua-lam-dut",
+      "schedule": {"type": "EVERY_N_DAYS", "weekdays": null, "timesPerWeek": null, "intervalDays": 3, "startOn": "2026-11-01", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-11",
+      "checkins": {"2026-11-01": "DONE", "2026-11-04": "DONE", "2026-11-07": "DONE", "2026-11-11": "DONE"},
+      "expected": {
+        "currentStreak": 0,
+        "longestStreak": 3,
+        "stats": {"from": "2026-11-01", "to": "2026-11-11", "scheduled": 4, "done": 3, "skipped": 0, "missed": 1, "completionRate": "0.7500"}
+      }
+    },
+    {
+      "name": "times-per-week-3-tuan-bat-dau-thu-hai-tuan-hien-tai-con-co-hoi",
+      "schedule": {"type": "TIMES_PER_WEEK", "weekdays": null, "timesPerWeek": 3, "intervalDays": null, "startOn": "2026-11-02", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-18",
+      "checkins": {"2026-11-02": "DONE", "2026-11-03": "DONE", "2026-11-05": "DONE", "2026-11-10": "DONE", "2026-11-12": "SKIPPED", "2026-11-14": "DONE", "2026-11-16": "DONE"},
+      "expected": {
+        "currentStreak": 2,
+        "longestStreak": 2,
+        "stats": {"from": "2026-11-02", "to": "2026-11-18", "scheduled": 7, "done": 6, "skipped": 1, "missed": 0, "completionRate": "1.0000"}
+      }
+    },
+    {
+      "name": "times-per-week-2-tuan-bat-dau-chu-nhat-tuan-bo-qua-du-la-trung-tinh",
+      "schedule": {"type": "TIMES_PER_WEEK", "weekdays": null, "timesPerWeek": 2, "intervalDays": null, "startOn": "2026-11-04", "endOn": null},
+      "weekStart": 7,
+      "today": "2026-11-21",
+      "checkins": {"2026-11-05": "DONE", "2026-11-09": "DONE", "2026-11-13": "DONE", "2026-11-15": "SKIPPED", "2026-11-16": "SKIPPED"},
+      "expected": {
+        "currentStreak": 1,
+        "longestStreak": 1,
+        "stats": {"from": "2026-11-01", "to": "2026-11-21", "scheduled": 6, "done": 3, "skipped": 2, "missed": 1, "completionRate": "0.7500"}
+      }
+    },
+    {
+      "name": "daily-end-on-da-qua-chuoi-tinh-den-end-on",
+      "schedule": {"type": "DAILY", "weekdays": null, "timesPerWeek": null, "intervalDays": null, "startOn": "2026-11-01", "endOn": "2026-11-05"},
+      "weekStart": 1,
+      "today": "2026-11-20",
+      "checkins": {"2026-11-01": "DONE", "2026-11-02": "DONE", "2026-11-03": "DONE", "2026-11-04": "DONE", "2026-11-05": "DONE"},
+      "expected": {
+        "currentStreak": 5,
+        "longestStreak": 5,
+        "stats": {"from": "2026-11-01", "to": "2026-11-20", "scheduled": 5, "done": 5, "skipped": 0, "missed": 0, "completionRate": "1.0000"}
+      }
+    },
+    {
+      "name": "daily-hom-nay-da-xong",
+      "schedule": {"type": "DAILY", "weekdays": null, "timesPerWeek": null, "intervalDays": null, "startOn": "2026-11-10", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-10",
+      "checkins": {"2026-11-10": "DONE"},
+      "expected": {
+        "currentStreak": 1,
+        "longestStreak": 1,
+        "stats": {"from": "2026-11-10", "to": "2026-11-10", "scheduled": 1, "done": 1, "skipped": 0, "missed": 0, "completionRate": "1.0000"}
+      }
+    },
+    {
+      "name": "chua-bat-dau-mau-so-0-ty-le-null",
+      "schedule": {"type": "DAILY", "weekdays": null, "timesPerWeek": null, "intervalDays": null, "startOn": "2026-12-01", "endOn": null},
+      "weekStart": 1,
+      "today": "2026-11-10",
+      "checkins": {},
+      "expected": {
+        "currentStreak": 0,
+        "longestStreak": 0,
+        "stats": {"from": "2026-11-01", "to": "2026-11-30", "scheduled": 0, "done": 0, "skipped": 0, "missed": 0, "completionRate": null}
+      }
+    }
+  ]
+}

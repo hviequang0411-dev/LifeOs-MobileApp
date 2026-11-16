@@ -1,0 +1,17 @@
+{
+  "id" : "2c697d9b-cbd8-417e-8572-6bea11121818",
+  "title" : "Chạy thử",
+  "description" : "d",
+  "status" : "OPEN",
+  "priority" : "HIGH",
+  "dueDate" : "2027-02-01",
+  "dueTime" : "06:30",
+  "completedAt" : null,
+  "projectId" : null,
+  "categoryId" : null,
+  "goalId" : "f9aa482c-b4d9-4345-b84c-d28813711c11",
+  "milestoneId" : "78b78773-b8eb-43f3-ac21-fe43c15ccc87",
+  "version" : 1,
+  "createdAt" : "2026-11-07T13:43:10.607903Z",
+  "updatedAt" : "2026-11-07T13:43:10.607903Z"
+}

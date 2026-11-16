@@ -1,0 +1,225 @@
+name: LifeOS Mobile Release Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        required: true
+        type: choice
+        options: [android, ios, both]
+      version:
+        description: SemVer without build suffix, for example 1.0.0
+        required: true
+        type: string
+      build_number:
+        description: Monotonically increasing positive integer
+        required: true
+        type: string
+      production_api_url:
+        description: HTTPS URL ending in /api/v1
+        required: true
+        type: string
+      publish:
+        description: Upload to Play internal/TestFlight after build
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  release-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release inputs and project ownership handoff
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build_number }}
+          RELEASE_API_URL: ${{ inputs.production_api_url }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_BUILD" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RELEASE_API_URL" =~ ^https://.+/api/v1$ ]]
+          ! grep -Eq 'localhost|127\.0\.0\.1|staging' <<<"$RELEASE_API_URL"
+
+          grep -Fq 'applicationId = "vn.lifeos.app"' mobile/android/app/build.gradle.kts
+          grep -Fq 'signingConfigs' mobile/android/app/build.gradle.kts
+          ! sed -n '/release[[:space:]]*{/,/^[[:space:]]*}/p' mobile/android/app/build.gradle.kts | grep -Fq 'getByName("debug")'
+          grep -Fq 'PRODUCT_BUNDLE_IDENTIFIER = vn.lifeos.app;' mobile/ios/Runner.xcodeproj/project.pbxproj
+
+          test -f mobile/ios/Runner/PrivacyInfo.xcprivacy
+          ! rg -n 'TODO: Specify your own unique Application ID|com\.lifeos\.lifeos' mobile/android mobile/ios
+
+  android:
+    if: inputs.platform == 'android' || inputs.platform == 'both'
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.publish && 'google-play-production' || 'mobile-build' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies and test
+        run: |
+          flutter pub get
+          flutter analyze --no-pub
+          flutter test --no-pub
+      - name: Install Android signing material
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" && test -n "$STORE_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+          chmod 600 android/app/release.keystore
+          {
+            printf 'storeFile=release.keystore\n'
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/key.properties
+      - name: Build signed AAB
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build_number }}
+          RELEASE_API_URL: ${{ inputs.production_api_url }}
+        run: >-
+          flutter build appbundle --release
+          --build-name="$RELEASE_VERSION"
+          --build-number="$RELEASE_BUILD"
+          --dart-define=LIFEOS_ENV=prod
+          --dart-define=LIFEOS_API_BASE_URL="$RELEASE_API_URL"
+      - name: Verify AAB signature
+        run: jarsigner -verify -strict -verbose build/app/outputs/bundle/release/app-release.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-android-${{ inputs.version }}-${{ inputs.build_number }}
+          path: mobile/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Google Play internal draft
+        if: inputs.publish
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: vn.lifeos.app
+          releaseFiles: mobile/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: draft
+
+  ios:
+    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    needs: release-preflight
+    runs-on: macos-latest
+    environment: ${{ inputs.publish && 'app-store-production' || 'mobile-build' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies and test
+        run: |
+          flutter pub get
+          flutter analyze --no-pub
+          flutter test --no-pub
+      - name: Install Apple signing material
+        shell: bash
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$CERTIFICATE_P12_BASE64" && test -n "$PROFILE_BASE64" && test -n "$KEYCHAIN_PASSWORD"
+          cert="$RUNNER_TEMP/distribution.p12"
+          profile="$RUNNER_TEMP/profile.mobileprovision"
+          keychain="$RUNNER_TEMP/lifeos.keychain-db"
+          printf '%s' "$CERTIFICATE_P12_BASE64" | base64 --decode > "$cert"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$profile"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$cert" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$keychain"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/lifeos.mobileprovision"
+      - name: Create export options
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$APPLE_TEAM_ID"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>stripSwiftSymbols</key><true/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+      - name: Build signed IPA
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build_number }}
+          RELEASE_API_URL: ${{ inputs.production_api_url }}
+        run: >-
+          flutter build ipa --release
+          --build-name="$RELEASE_VERSION"
+          --build-number="$RELEASE_BUILD"
+          --dart-define=LIFEOS_ENV=prod
+          --dart-define=LIFEOS_API_BASE_URL="$RELEASE_API_URL"
+          --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-ios-${{ inputs.version }}-${{ inputs.build_number }}
+          path: mobile/build/ios/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload TestFlight
+        if: inputs.publish
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$ASC_KEY_ID" && test -n "$ASC_ISSUER_ID" && test -n "$ASC_PRIVATE_KEY"
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          xcrun altool --upload-app --type ios --file build/ios/ipa/*.ipa --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

@@ -1,0 +1,22 @@
+{
+  "id": "30000000-0000-4000-8000-000000000001",
+  "conversationId": "10000000-0000-4000-8000-000000000001",
+  "sourceMessageId": "10000000-0000-4000-8000-000000000003",
+  "actionType": "UPDATE_TASK_PRIORITY",
+  "status": "PROPOSED",
+  "version": 1,
+  "payloadHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "title": "Đổi mức ưu tiên của Task",
+  "changes": [
+    {
+      "field": "priority",
+      "before": "MEDIUM",
+      "after": "HIGH"
+    }
+  ],
+  "expiresAt": "2026-11-10T08:15:00Z",
+  "result": null,
+  "failureCode": null,
+  "createdAt": "2026-11-10T08:00:03Z",
+  "updatedAt": "2026-11-10T08:00:03Z"
+}

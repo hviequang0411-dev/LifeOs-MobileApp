@@ -1,0 +1,17 @@
+{
+  "id" : "c03c672b-ef2a-4c63-9146-e3acf7368948",
+  "targetType" : "EVENT",
+  "targetId" : "66553827-c646-4739-90d1-2d1985d47e20",
+  "mode" : "OFFSET",
+  "offsetMinutes" : 10,
+  "localTime" : null,
+  "localDate" : null,
+  "repeatRule" : null,
+  "urgent" : false,
+  "status" : "ACTIVE",
+  "nextFireAt" : "2027-03-01T01:50:00Z",
+  "lastFiredAt" : null,
+  "version" : 1,
+  "createdAt" : "2026-11-07T13:43:10.607903Z",
+  "updatedAt" : "2026-11-07T13:43:10.607903Z"
+}

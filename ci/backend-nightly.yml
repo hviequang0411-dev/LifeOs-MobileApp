@@ -1,0 +1,107 @@
+name: backend-nightly
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-nightly
+  cancel-in-progress: false
+
+jobs:
+  full-simulation-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Full verify with multi-device simulation
+        working-directory: backend
+        run: mvn -B -ntp clean verify -Dlifeos.sync.simulation.full=true
+
+      - name: Backend benchmark
+        working-directory: backend
+        run: >-
+          mvn -B -ntp verify -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false
+          -Dit.test=BackendBenchmark
+
+      - name: Upload reports and benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-reports-${{ github.run_id }}
+          retention-days: 14
+          path: |
+            backend/target/benchmark.md
+            backend/target/surefire-reports
+            backend/target/failsafe-reports
+
+  migration-backup-restore-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: lifeos
+          POSTGRES_USER: lifeos
+          POSTGRES_PASSWORD: nightly-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lifeos -d lifeos"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build migration image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: migrations
+          load: true
+          push: false
+          tags: lifeos-migrations:nightly
+      - name: Migrate, logical backup and restore into a new database
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e FLYWAY_URL=jdbc:postgresql://127.0.0.1:5432/lifeos \
+            -e FLYWAY_USER=lifeos -e FLYWAY_PASSWORD=nightly-test-only \
+            lifeos-migrations:nightly migrate
+          pg_container='${{ job.services.postgres.id }}'
+          docker exec "$pg_container" pg_dump -U lifeos -Fc -f /tmp/lifeos.dump lifeos
+          docker exec "$pg_container" createdb -U lifeos lifeos_restore
+          docker exec "$pg_container" pg_restore --exit-on-error --no-owner --no-acl -U lifeos -d lifeos_restore /tmp/lifeos.dump
+          latest=$(docker exec "$pg_container" psql -U lifeos -d lifeos_restore -Atqc \
+            "select version from flyway_schema_history where success order by installed_rank desc limit 1")
+          test "$latest" = "11"
+
+  image-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: runtime
+          load: true
+          push: false
+          tags: lifeos-backend:nightly
+      - name: Scan all known vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.58.1 image --exit-code 1 --severity HIGH,CRITICAL lifeos-backend:nightly

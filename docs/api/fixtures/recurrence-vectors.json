@@ -1,0 +1,90 @@
+{
+  "description": "Vector mở rộng quy tắc lặp sự kiện (PHASE_4 D125, D126, D134; CAL-01). Java (EventRecurrenceVectorsTest) và Dart chạy cùng tệp. start/from/to/expected là giờ địa phương của sự kiện (yyyy-MM-ddTHH:mm:ss); from bao gồm, to loại trừ. expectedUtc (nếu có) là thời điểm UTC sau khi áp múi giờ: giờ không tồn tại (DST nhảy tiến) dời tới mốc hợp lệ kế tiếp, giờ lặp (DST lùi) lấy lần đầu.",
+  "cases": [
+    {
+      "name": "daily-interval-2-count-4",
+      "start": "2026-11-01T08:00:00",
+      "rule": {"freq": "DAILY", "interval": 2, "count": 4},
+      "from": "2026-10-01T00:00:00",
+      "to": "2027-01-01T00:00:00",
+      "expected": ["2026-11-01T08:00:00", "2026-11-03T08:00:00", "2026-11-05T08:00:00", "2026-11-07T08:00:00"]
+    },
+    {
+      "name": "weekly-byweekday-count-skips-days-before-start",
+      "start": "2026-11-04T19:00:00",
+      "rule": {"freq": "WEEKLY", "byWeekday": ["MO", "WE", "FR"], "count": 5},
+      "from": "2026-10-01T00:00:00",
+      "to": "2027-01-01T00:00:00",
+      "expected": ["2026-11-04T19:00:00", "2026-11-06T19:00:00", "2026-11-09T19:00:00", "2026-11-11T19:00:00",
+        "2026-11-13T19:00:00"]
+    },
+    {
+      "name": "weekly-interval-2-window",
+      "start": "2026-11-03T07:30:00",
+      "rule": {"freq": "WEEKLY", "interval": 2, "byWeekday": ["TU", "TH"]},
+      "from": "2026-11-01T00:00:00",
+      "to": "2026-12-01T00:00:00",
+      "expected": ["2026-11-03T07:30:00", "2026-11-05T07:30:00", "2026-11-17T07:30:00", "2026-11-19T07:30:00"]
+    },
+    {
+      "name": "monthly-day-31-clamps-to-month-end",
+      "start": "2027-01-31T09:00:00",
+      "rule": {"freq": "MONTHLY", "count": 4},
+      "from": "2027-01-01T00:00:00",
+      "to": "2028-01-01T00:00:00",
+      "expected": ["2027-01-31T09:00:00", "2027-02-28T09:00:00", "2027-03-31T09:00:00", "2027-04-30T09:00:00"]
+    },
+    {
+      "name": "monthly-bymonthday-30",
+      "start": "2027-01-15T12:00:00",
+      "rule": {"freq": "MONTHLY", "byMonthDay": 30, "count": 3},
+      "from": "2027-01-01T00:00:00",
+      "to": "2028-01-01T00:00:00",
+      "expected": ["2027-01-30T12:00:00", "2027-02-28T12:00:00", "2027-03-30T12:00:00"]
+    },
+    {
+      "name": "yearly-leap-day",
+      "start": "2028-02-29T10:00:00",
+      "rule": {"freq": "YEARLY", "count": 3},
+      "from": "2028-01-01T00:00:00",
+      "to": "2035-01-01T00:00:00",
+      "expected": ["2028-02-29T10:00:00", "2029-02-28T10:00:00", "2030-02-28T10:00:00"]
+    },
+    {
+      "name": "until-is-inclusive-by-local-date",
+      "start": "2026-11-01T06:00:00",
+      "rule": {"freq": "DAILY", "until": "2026-11-03"},
+      "from": "2026-11-01T00:00:00",
+      "to": "2026-12-01T00:00:00",
+      "expected": ["2026-11-01T06:00:00", "2026-11-02T06:00:00", "2026-11-03T06:00:00"]
+    },
+    {
+      "name": "old-series-window-far-in-the-future",
+      "start": "2020-01-01T08:00:00",
+      "rule": {"freq": "DAILY", "interval": 3},
+      "from": "2026-11-07T00:00:00",
+      "to": "2026-11-14T00:00:00",
+      "expected": ["2026-11-07T08:00:00", "2026-11-10T08:00:00", "2026-11-13T08:00:00"]
+    },
+    {
+      "name": "dst-spring-forward-new-york",
+      "start": "2027-03-13T02:30:00",
+      "timezone": "America/New_York",
+      "rule": {"freq": "DAILY", "count": 3},
+      "from": "2027-03-01T00:00:00",
+      "to": "2027-04-01T00:00:00",
+      "expected": ["2027-03-13T02:30:00", "2027-03-14T02:30:00", "2027-03-15T02:30:00"],
+      "expectedUtc": ["2027-03-13T07:30:00Z", "2027-03-14T07:30:00Z", "2027-03-15T06:30:00Z"]
+    },
+    {
+      "name": "dst-fall-back-new-york-first-occurrence",
+      "start": "2027-11-06T01:30:00",
+      "timezone": "America/New_York",
+      "rule": {"freq": "DAILY", "count": 2},
+      "from": "2027-11-01T00:00:00",
+      "to": "2027-12-01T00:00:00",
+      "expected": ["2027-11-06T01:30:00", "2027-11-07T01:30:00"],
+      "expectedUtc": ["2027-11-06T05:30:00Z", "2027-11-07T05:30:00Z"]
+    }
+  ]
+}

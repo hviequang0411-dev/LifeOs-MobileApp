@@ -1,0 +1,89 @@
+name: lifeos-production
+
+services:
+  migrate:
+    image: ${LIFEOS_MIGRATION_IMAGE:?Set LIFEOS_MIGRATION_IMAGE to an immutable tag or digest}
+    profiles: [migration]
+    environment:
+      FLYWAY_URL: ${MIGRATION_DB_URL:?Set MIGRATION_DB_URL}
+      FLYWAY_USER: ${MIGRATION_DB_USER:?Set MIGRATION_DB_USER}
+      FLYWAY_PASSWORD: ${MIGRATION_DB_PASSWORD:?Set MIGRATION_DB_PASSWORD}
+      FLYWAY_CONNECT_RETRIES: "10"
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+    command: [migrate]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  backend:
+    image: ${LIFEOS_IMAGE:?Set LIFEOS_IMAGE to an immutable tag or digest}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    cpus: ${BACKEND_CPUS:-1.0}
+    mem_limit: ${BACKEND_MEMORY:-2g}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_FLYWAY_ENABLED: "false"
+      TZ: UTC
+      DB_URL: ${DB_URL:?Set DB_URL}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_POOL_MIN_IDLE: ${DB_POOL_MIN_IDLE:-2}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_KID: ${JWT_KID:?Set JWT_KID}
+      JWT_PREVIOUS_SECRET: ${JWT_PREVIOUS_SECRET:-}
+      JWT_PREVIOUS_KID: ${JWT_PREVIOUS_KID:-}
+      NOTIFICATION_UNSUBSCRIBE_SECRET: ${NOTIFICATION_UNSUBSCRIBE_SECRET:?Set NOTIFICATION_UNSUBSCRIBE_SECRET}
+      SNAPSHOT_HMAC_SECRET: ${SNAPSHOT_HMAC_SECRET:?Set SNAPSHOT_HMAC_SECRET}
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL}
+      API_BASE_URL: ${API_BASE_URL:?Set API_BASE_URL}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?Set exact trusted proxy regex}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:?Set SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM}
+      FCM_ENABLED: ${FCM_ENABLED:-false}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
+      FCM_TOKEN_URI: ${FCM_TOKEN_URI:-https://oauth2.googleapis.com/token}
+      EXPORT_DIR: /var/lib/lifeos/exports
+    ports:
+      - 127.0.0.1:${BACKEND_PORT:-8080}:8080
+    volumes:
+      - lifeos-exports:/var/lib/lifeos/exports
+    networks: [default, lifeos-observability]
+    healthcheck:
+      test: [CMD-SHELL, "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/liveness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  lifeos-exports:
+    name: lifeos-production-exports
+
+networks:
+  lifeos-observability:
+    external: true

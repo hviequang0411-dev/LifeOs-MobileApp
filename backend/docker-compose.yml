@@ -1,0 +1,57 @@
+# Môi trường chạy local (dev). Không dùng cho production.
+# Chạy cả stack:   JWT_SECRET="$(openssl rand -base64 32)" docker compose up -d --build
+# Chỉ hạ tầng (chạy backend bằng mvn spring-boot:run):   docker compose up -d postgres mailpit
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: lifeos
+      POSTGRES_USER: lifeos
+      POSTGRES_PASSWORD: lifeos
+    ports:
+      - "5432:5432"
+    volumes:
+      - lifeos-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifeos -d lifeos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Nhận email gửi ra khi dev (SMTP 1025, giao diện web http://localhost:8025)
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # Backend (SYSTEM_ARCHITECTURE §7, §12). Profile dev; secret chỉ từ biến môi trường của máy chạy compose.
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://postgres:5432/lifeos
+      DB_USER: lifeos
+      DB_PASSWORD: lifeos
+      JWT_SECRET: ${JWT_SECRET:?Đặt biến JWT_SECRET (base64, >= 32 byte) trước khi chạy}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: LifeOS Dev <no-reply@lifeos.localhost>
+      APP_BASE_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # Image JRE không có curl: gọi /actuator/health bằng bash /dev/tcp.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  lifeos-pg:

@@ -1,0 +1,12 @@
+{
+  "id" : "f9aa482c-b4d9-4345-b84c-d28813711c11",
+  "title" : "Chạy 10 km",
+  "description" : "Mô tả",
+  "startOn" : "2027-01-01",
+  "targetOn" : "2027-06-30",
+  "status" : "ACTIVE",
+  "statusChangedAt" : null,
+  "version" : 1,
+  "createdAt" : "2026-11-07T13:43:10.607903Z",
+  "updatedAt" : "2026-11-07T13:43:10.607903Z"
+}

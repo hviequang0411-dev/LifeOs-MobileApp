@@ -1,0 +1,12 @@
+{
+  "id": "2b8e4f10-7c3a-4d9e-b1f2-5a6c7d8e9f01",
+  "name": "Tiền mặt",
+  "accountType": "CASH",
+  "currency": "VND",
+  "openingBalance": "500000",
+  "archivedAt": null,
+  "version": 1,
+  "createdAt": "2026-11-07T03:19:00.123456Z",
+  "updatedAt": "2026-11-07T03:19:00.123456Z",
+  "balance": "375000"
+}

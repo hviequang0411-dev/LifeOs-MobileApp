@@ -1,0 +1,19 @@
+{
+  "taskCalendar": true,
+  "habit": true,
+  "goal": true,
+  "notes": false,
+  "finance": false,
+  "policyVersion": "2026-11-10",
+  "providerNoticeVersion": "openai-api-2026-11-10",
+  "providerTermsAcceptedAt": "2026-11-10T08:00:00Z",
+  "updatedAt": "2026-11-10T08:00:00Z",
+  "features": {
+    "chat": true,
+    "insights": true,
+    "notes": false,
+    "finance": false,
+    "rag": false,
+    "actions": false
+  }
+}

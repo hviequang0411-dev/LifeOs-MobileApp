@@ -1,0 +1,62 @@
+package com.lifeos.calendar.repository;
+
+import com.lifeos.calendar.entity.TimeBlock;
+import jakarta.persistence.LockModeType;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.domain.Limit;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+/** Dữ liệu cá nhân: mọi truy vấn theo id đều kèm userId (SECURITY_RULES §7.2). */
+public interface TimeBlockRepository extends JpaRepository<TimeBlock, UUID> {
+
+    @Query("select e from TimeBlock e where e.id = :id and e.userId = :userId and e.deletedAt is null")
+    Optional<TimeBlock> findActive(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from TimeBlock e where e.id = :id and e.userId = :userId and e.deletedAt is null")
+    Optional<TimeBlock> findActiveForUpdate(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select e from TimeBlock e where e.id = :id and e.userId = :userId and e.deletedAt is null")
+    Optional<TimeBlock> findActiveForShare(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Query("select e.version from TimeBlock e where e.id = :id and e.userId = :userId")
+    Optional<Long> findVersion(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Query("select e from TimeBlock e where e.userId = :userId and e.id in :ids")
+    List<TimeBlock> findAllOwned(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
+
+    @Query("select count(e) from TimeBlock e where e.userId = :userId and e.deletedAt is null")
+    long countLive(@Param("userId") UUID userId);
+
+    /** Danh sách keyset createdAt giảm dần rồi id giảm dần (D79). */
+    @Query("""
+            select e from TimeBlock e
+            where e.userId = :userId and e.deletedAt is null
+              and (:first = true or e.createdAt < :afterCreatedAt
+                   or (e.createdAt = :afterCreatedAt and e.id < :afterId))
+            order by e.createdAt desc, e.id desc
+            """)
+    List<TimeBlock> page(@Param("userId") UUID userId, @Param("first") boolean first,
+            @Param("afterCreatedAt") Instant afterCreatedAt, @Param("afterId") UUID afterId, Limit limit);
+
+    @Query("select b from TimeBlock b where b.userId = :userId and b.taskId = :taskId and b.deletedAt is null order by b.id")
+    List<TimeBlock> findLiveByTask(@Param("userId") UUID userId, @Param("taskId") UUID taskId);
+
+    @Query("""
+            select b from TimeBlock b
+            where b.userId = :userId and b.deletedAt is null
+              and (:taskId is null or b.taskId = :taskId)
+              and b.startAt < :to and b.endAt > :from
+            order by b.startAt, b.id
+            """)
+    List<TimeBlock> between(@Param("userId") UUID userId, @Param("taskId") UUID taskId, @Param("from") Instant from,
+            @Param("to") Instant to, Limit limit);
+}

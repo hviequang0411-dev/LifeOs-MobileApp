@@ -1,0 +1,38 @@
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local environment and secrets
+.env
+.env.*
+!.env.production.example
+!.env.staging.example
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Build outputs and caches
+/build/
+backend/target/
+mobile/.dart_tool/
+mobile/.pub-cache/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/coverage/
+mobile/android/build/
+mobile/ios/Pods/
+
+# Logs and transient files
+*.log
+*.tmp
+*.swp
+*~
+
+# Local duplicate retained outside version control
+AGENTS-1.md

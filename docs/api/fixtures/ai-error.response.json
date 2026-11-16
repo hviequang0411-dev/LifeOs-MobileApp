@@ -1,0 +1,9 @@
+{
+  "type": "https://lifeos.app/problems/ai-consent-required",
+  "title": "Cần quyền truy cập dữ liệu",
+  "status": 403,
+  "detail": "Hãy bật quyền cho miền dữ liệu cần dùng.",
+  "errorCode": "AI_CONSENT_REQUIRED",
+  "correlationId": "40000000-0000-4000-8000-000000000001",
+  "requiredDomains": ["FINANCE"]
+}

@@ -1,0 +1,7 @@
+{
+  "tokenType": "Bearer",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsImtpZCI6ImZha2UifQ.eyJzdWIiOiJmYWtlLTIifQ.ZmFrZS1zaWduYXR1cmUtMg",
+  "expiresIn": 900,
+  "refreshToken": "ZmFrZS1yZWZyZXNoLXRva2VuLWZvci1maXh0dXJlcy0wMDI",
+  "deviceId": "3d6f4a1e-8b7c-4d2e-9f10-2a3b4c5d6e7f"
+}

@@ -1,0 +1,55 @@
+groups:
+  - name: lifeos-future-producers
+    rules:
+      - alert: LifeOSJobStale
+        expr: time() - lifeos_job_last_success_seconds > 3 * lifeos_job_expected_interval_seconds
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: LifeOS scheduled job has missed more than three intervals
+
+      - alert: LifeOSAIProviderErrors
+        expr: >-
+          sum(rate(lifeos_ai_requests_total{result=~"timeout|provider_4xx|provider_5xx"}[10m]))
+          / clamp_min(sum(rate(lifeos_ai_requests_total[10m])), 0.001) > 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: LifeOS AI provider error ratio exceeds 10 percent
+
+      - alert: LifeOSAIP95Slow
+        expr: >-
+          histogram_quantile(0.95,
+          sum by (le) (rate(lifeos_ai_provider_duration_seconds_bucket[10m]))) > 25
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: LifeOS AI provider p95 exceeds 25 seconds
+
+      - alert: LifeOSAICircuitOpen
+        expr: lifeos_ai_circuit_state{state="open"} == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: LifeOS AI circuit breaker has remained open
+
+      - alert: LifeOSAIBudget80Percent
+        expr: lifeos_ai_estimated_cost_microusd / clamp_min(lifeos_ai_budget_microusd, 1) >= 0.8
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: LifeOS AI monthly budget reached 80 percent
+
+      - alert: LifeOSAIBudgetExhausted
+        expr: lifeos_ai_estimated_cost_microusd >= lifeos_ai_budget_microusd
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: LifeOS AI monthly hard budget is exhausted
+
+      - alert: LifeOSAIActionFailure
+        expr: increase(lifeos_ai_action_total{outcome="failed"}[15m]) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: LifeOS AI action proposal execution failed

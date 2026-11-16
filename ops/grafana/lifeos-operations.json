@@ -1,0 +1,66 @@
+{
+  "title": "LifeOS operations and AI",
+  "uid": "lifeos-operations",
+  "schemaVersion": 41,
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Backup age (hours)",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "(time() - lifeos_backup_last_success_timestamp_seconds) / 3600", "refId": "A"}]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Last restore drill age (days)",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "(time() - lifeos_restore_last_success_timestamp_seconds) / 86400", "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Job last success age",
+      "description": "No data until the backend job metric producer is approved and implemented.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "time() - lifeos_job_last_success_seconds", "legendFormat": "{{job}}", "refId": "A"}]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Hikari pending connections",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "hikaricp_connections_pending", "refId": "A"}]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "AI provider p95",
+      "description": "No data until AIP2/AIP3 metrics exist.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(lifeos_ai_provider_duration_seconds_bucket[10m])))", "refId": "A"}]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "AI estimated cost / budget",
+      "description": "Finite labels only; never include user, conversation, prompt, output or amount data.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {"expr": "lifeos_ai_estimated_cost_microusd", "legendFormat": "cost", "refId": "A"},
+        {"expr": "lifeos_ai_budget_microusd", "legendFormat": "budget", "refId": "B"}
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "AI results",
+      "description": "No userId/conversationId labels.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [{"expr": "sum by (result) (rate(lifeos_ai_requests_total[10m]))", "legendFormat": "{{result}}", "refId": "A"}]
+    }
+  ],
+  "version": 1
+}
