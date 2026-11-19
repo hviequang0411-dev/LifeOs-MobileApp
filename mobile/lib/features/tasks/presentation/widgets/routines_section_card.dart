@@ -14,22 +14,59 @@ import 'routine_player_sheet.dart';
 class PlanRoutinesSection extends ConsumerWidget {
   const PlanRoutinesSection({super.key});
 
-  Future<void> _openCreateRoutineDialog(
+  static final RegExp _stepDurationRegex = RegExp(
+    r'^(.*?)\s*\((\d+)\s*(?:p|phút|m|min)\)\s*$',
+    caseSensitive: false,
+  );
+
+  ({String title, int durationMinutes}) _parseStepLine(String raw) {
+    final String trimmed = raw.trim();
+    final RegExpMatch? m = _stepDurationRegex.firstMatch(trimmed);
+    if (m != null) {
+      final String title = (m.group(1) ?? '').trim();
+      final int mins = int.tryParse(m.group(2) ?? '') ?? 5;
+      if (title.isNotEmpty) {
+        return (title: title, durationMinutes: mins.clamp(1, 240));
+      }
+    }
+    return (title: trimmed, durationMinutes: 5);
+  }
+
+  Future<void> _openRoutineDialog(
     BuildContext context,
     WidgetRef ref,
     String userId,
-    LifeOsLocalRepository repo,
-  ) async {
-    final TextEditingController nameCtrl = TextEditingController();
-    final TextEditingController timeCtrl =
-        TextEditingController(text: '07:00');
-    final TextEditingController stepsCtrl = TextEditingController(
-      text: 'Uống 1 ly nước ấm (2p)\nGiãn cơ & hít thở (5p)\nChọn 3 việc ưu tiên (5p)',
+    LifeOsLocalRepository repo, {
+    LocalEntityRow? existing,
+  }) async {
+    final bool isEditing = existing != null;
+    final TextEditingController nameCtrl = TextEditingController(
+      text: isEditing ? ((existing.payload['name'] as String?) ?? '') : '',
     );
-    final bool? created = await showDialog<bool>(
+    final TextEditingController timeCtrl = TextEditingController(
+      text: isEditing
+          ? ((existing.payload['reminderTime'] as String?) ?? '07:00')
+          : '07:00',
+    );
+    final List<LocalEntityRow> existingSteps = isEditing
+        ? repo.tasks.listRoutineSteps(userId: userId, routineId: existing.id)
+        : const <LocalEntityRow>[];
+    final TextEditingController stepsCtrl = TextEditingController(
+      text: isEditing && existingSteps.isNotEmpty
+          ? existingSteps
+              .map(
+                (LocalEntityRow s) =>
+                    '${(s.payload['title'] as String?) ?? 'Bước'} (${(s.payload['durationMinutes'] as num?)?.toInt() ?? 5}p)',
+              )
+              .join('\n')
+          : 'Uống 1 ly nước ấm (2p)\nGiãn cơ & hít thở (5p)\nChọn 3 việc ưu tiên (5p)',
+    );
+    final bool? saved = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Tạo chuỗi thói quen mới'),
+        title: Text(
+          isEditing ? 'Chỉnh sửa chuỗi thói quen' : 'Tạo chuỗi thói quen mới',
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -83,24 +120,54 @@ class PlanRoutinesSection extends ConsumerWidget {
       ),
     );
 
-    if (created == true) {
-      final List<String> lines = stepsCtrl.text
-          .split('\n')
-          .map((String e) => e.trim())
-          .where((String e) => e.isNotEmpty)
-          .toList();
-      final List<String> titles = lines.isEmpty
-          ? <String>['Bước 1']
-          : lines;
-      repo.tasks.createRoutine(
-        userId: userId,
-        name: nameCtrl.text,
-        kind: 'DAILY',
-        reminderTime: timeCtrl.text.trim().isEmpty ? null : timeCtrl.text.trim(),
-        stepTitles: titles,
-        stepDurationsMinutes: List<int>.filled(titles.length, 5),
-        nowUtc: ref.read(referenceUtcProvider),
-      );
+    if (saved == true) {
+      final List<({String title, int durationMinutes})> parsedSteps =
+          stepsCtrl.text
+              .split('\n')
+              .map((String e) => e.trim())
+              .where((String e) => e.isNotEmpty)
+              .map(_parseStepLine)
+              .toList();
+      final List<({String title, int durationMinutes})> finalSteps =
+          parsedSteps.isEmpty
+              ? const <({String title, int durationMinutes})>[
+                  (title: 'Bước 1', durationMinutes: 5),
+                ]
+              : parsedSteps;
+      if (isEditing) {
+        repo.updateRoutine(
+          userId: userId,
+          routineId: existing.id,
+          name: nameCtrl.text,
+          kind: (existing.payload['kind'] as String?) ?? 'DAILY',
+          reminderTime: timeCtrl.text.trim(),
+          steps: finalSteps
+              .map(
+                (({String title, int durationMinutes}) s) =>
+                    (title: s.title, durationMinutes: s.durationMinutes),
+              )
+              .toList(),
+          nowUtc: ref.read(referenceUtcProvider),
+        );
+      } else {
+        repo.tasks.createRoutine(
+          userId: userId,
+          name: nameCtrl.text,
+          kind: 'DAILY',
+          reminderTime:
+              timeCtrl.text.trim().isEmpty ? null : timeCtrl.text.trim(),
+          stepTitles: finalSteps
+              .map((({String title, int durationMinutes}) s) => s.title)
+              .toList(),
+          stepDurationsMinutes: finalSteps
+              .map(
+                (({String title, int durationMinutes}) s) =>
+                    s.durationMinutes,
+              )
+              .toList(),
+          nowUtc: ref.read(referenceUtcProvider),
+        );
+      }
       final NotificationPreferences prefs =
           ref.read(notificationPreferencesProvider);
       if (prefs.masterEnabled && timeCtrl.text.trim().isNotEmpty) {
@@ -146,7 +213,7 @@ class PlanRoutinesSection extends ConsumerWidget {
             FilledButton.tonalIcon(
               key: const Key('btn_open_create_routine'),
               onPressed: () =>
-                  _openCreateRoutineDialog(context, ref, userId, repo),
+                  _openRoutineDialog(context, ref, userId, repo),
               icon: const Icon(Icons.playlist_add_outlined, size: 18),
               label: const Text('Thêm chuỗi'),
             ),
@@ -213,6 +280,70 @@ class PlanRoutinesSection extends ConsumerWidget {
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        key: Key('btn_edit_routine_${r.id}'),
+                        tooltip: 'Sửa chuỗi',
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        onPressed: () => _openRoutineDialog(
+                          context,
+                          ref,
+                          userId,
+                          repo,
+                          existing: r,
+                        ),
+                      ),
+                      IconButton(
+                        key: Key('btn_delete_routine_${r.id}'),
+                        tooltip: 'Xóa chuỗi',
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: tokens.danger,
+                        ),
+                        onPressed: () async {
+                          final bool? ok = await showDialog<bool>(
+                            context: context,
+                            builder: (BuildContext ctx) => AlertDialog(
+                              title: const Text('Xóa chuỗi thói quen?'),
+                              content: Text(
+                                'Chuỗi "${(r.payload['name'] as String?) ?? 'Thói quen'}" sẽ bị xóa.',
+                              ),
+                              actions: <Widget>[
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(false),
+                                  child: const Text(ViStrings.cancelAction),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: tokens.danger,
+                                  ),
+                                  onPressed: () => Navigator.of(ctx).pop(true),
+                                  child: const Text(ViStrings.deleteAction),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            repo.deleteRoutine(
+                              userId: userId,
+                              routineId: r.id,
+                              nowUtc: ref.read(referenceUtcProvider),
+                            );
+                          }
+                        },
                       ),
                       FilledButton.tonalIcon(
                         key: Key('btn_run_routine_${r.id}'),

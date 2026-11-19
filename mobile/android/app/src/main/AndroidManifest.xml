@@ -1,8 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bản release cần quyền mạng để gọi backend (manifest debug/profile của Flutter tự thêm, main thì không). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
-        android:label="lifeos_mobile"
+        android:label="LifeOS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

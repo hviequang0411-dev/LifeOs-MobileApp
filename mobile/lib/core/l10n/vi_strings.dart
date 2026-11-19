@@ -45,10 +45,29 @@ class ViStrings {
   static String formatTaskPriority(String? priority) {
     return switch ((priority ?? 'MEDIUM').trim().toUpperCase()) {
       'HIGH' => priorityHigh,
+      'URGENT' => 'Khẩn cấp',
       'MEDIUM' => priorityMedium,
       'LOW' => priorityLow,
       'NONE' => priorityNone,
       _ => priorityMedium,
+    };
+  }
+
+  /// Ánh xạ `templateKey` của hộp thư thông báo sang tiêu đề tiếng Việt tự nhiên.
+  static String formatNotificationTemplate(
+    String? templateKey, {
+    String? fallbackTitle,
+  }) {
+    final String key = (templateKey ?? '').trim().toLowerCase();
+    return switch (key) {
+      'finance.recurring.paused' =>
+        'Giao dịch định kỳ đã tạm dừng vì tài khoản đang lưu trữ',
+      'finance.budget.threshold' => 'Cảnh báo chạm ngưỡng ngân sách',
+      'task.due' || 'task.overdue' => 'Nhắc hạn công việc',
+      'calendar.event.reminder' => 'Nhắc lịch sự kiện sắp tới',
+      _ => (fallbackTitle != null && fallbackTitle.trim().isNotEmpty)
+          ? fallbackTitle.trim()
+          : 'Thông báo từ LifeOS',
     };
   }
 
@@ -147,7 +166,19 @@ class ViStrings {
         return 'Số dư tài khoản không đủ để thực hiện giao dịch này.';
       case 'CURRENCY_MISMATCH':
       case 'FINANCE_CURRENCY_MISMATCH':
-        return 'Hai tài khoản hoặc mục tiêu phải có cùng đơn vị tiền tệ.';
+        return 'Tài khoản hoặc mục tiêu được chọn không cùng đơn vị tiền tệ.';
+      case 'FINANCE_CURRENCY_LOCKED':
+        return 'Không thể đổi tiền tệ của tài khoản đã phát sinh giao dịch.';
+      case 'FINANCE_ACCOUNT_HAS_TRANSACTIONS':
+        return 'Tài khoản đã có giao dịch nên không thể xóa. Hãy lưu trữ tài khoản thay thế.';
+      case 'FINANCE_ACCOUNT_ARCHIVED':
+        return 'Tài khoản đang ở trạng thái lưu trữ. Hãy bỏ lưu trữ trước khi ghi nhận giao dịch mới.';
+      case 'FINANCE_CATEGORY_KIND_MISMATCH':
+        return 'Loại danh mục không khớp với loại giao dịch (Thu hoặc Chi).';
+      case 'FINANCE_CATEGORY_IN_USE':
+        return 'Danh mục đang được sử dụng trong giao dịch hoặc ngân sách nên không thể xóa.';
+      case 'ANALYTICS_RANGE_TOO_LARGE':
+        return 'Khoảng thời gian thống kê quá lớn. Vui lòng thu hẹp phạm vi rồi thử lại.';
       case 'FINANCE_BUDGET_EXISTS':
         return 'Đã có ngân sách đang hoạt động cho danh mục và tiền tệ này.';
       case 'FINANCE_NAME_TAKEN':

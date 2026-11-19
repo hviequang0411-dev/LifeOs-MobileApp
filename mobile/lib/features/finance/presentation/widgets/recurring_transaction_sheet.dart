@@ -137,30 +137,91 @@ class _RecurringTransactionSheetState
           resolvedAccount == null ? 'Vui lòng tạo ít nhất 1 ví trước.' : null;
     });
     if (amtErr != null || intErr != null || resolvedAccount == null) return;
+    final String startIso = _startOnController.text.trim();
+    final String endIso = _endOnController.text.trim();
+    final RegExp dateRe = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+    if (!dateRe.hasMatch(startIso) || (endIso.isNotEmpty && !dateRe.hasMatch(endIso))) {
+      setState(
+        () => _formError = 'Ngày bắt đầu / kết thúc cần đúng định dạng YYYY-MM-DD.',
+      );
+      return;
+    }
 
     final String userId = ref.read(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
     final Decimal10k amount = _parseAmount()!;
     final int interval = _parseInterval()!;
 
-    repo.finance.saveRecurringTransaction(
-      userId: userId,
-      recurringId: widget.existing?.id,
-      accountId: resolvedAccount,
-      categoryId: _categoryId,
-      kind: _kind,
-      amount: amount,
-      note: _noteController.text,
-      frequency: _frequency,
-      intervalCount: interval,
-      startOnIso: _startOnController.text.trim(),
-      endOnIso: _endOnController.text.trim().isEmpty
-          ? null
-          : _endOnController.text.trim(),
-      status: _status,
-      nowUtc: ref.read(referenceUtcProvider),
+    try {
+      repo.finance.saveRecurringTransaction(
+        userId: userId,
+        recurringId: widget.existing?.id,
+        accountId: resolvedAccount,
+        categoryId: _categoryId,
+        kind: _kind,
+        amount: amount,
+        note: _noteController.text,
+        frequency: _frequency,
+        intervalCount: interval,
+        startOnIso: startIso,
+        endOnIso: endIso.isEmpty ? null : endIso,
+        status: _status,
+        nowUtc: ref.read(referenceUtcProvider),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      final String code = e is StateError ? e.message : e.toString();
+      setState(() => _formError = ViStrings.mapBackendErrorCode(code));
+    }
+  }
+
+  Future<void> _pickRecurringDate(TextEditingController ctrl) async {
+    final DateTime base = DateTime.tryParse(ctrl.text.trim()) ??
+        ref.read(referenceUtcProvider).toLocal();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2040),
     );
-    Navigator.of(context).pop(true);
+    if (picked != null && mounted) {
+      final String y = picked.year.toString().padLeft(4, '0');
+      final String m = picked.month.toString().padLeft(2, '0');
+      final String d = picked.day.toString().padLeft(2, '0');
+      setState(() => ctrl.text = '$y-$m-$d');
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    if (widget.existing == null) return;
+    final LifeOsTokens tokens = LifeOsTokens.of(context);
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Xóa giao dịch định kỳ?'),
+        content: const Text('Lịch định kỳ này sẽ ngừng tạo giao dịch mới.'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(ViStrings.cancelAction),
+          ),
+          FilledButton(
+            key: const Key('btn_confirm_delete_recurring'),
+            style: FilledButton.styleFrom(backgroundColor: tokens.danger),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(ViStrings.deleteAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      ref.read(localRepositoryProvider).deleteRecurringTransaction(
+            userId: ref.read(currentUserIdProvider),
+            recurringId: widget.existing!.id,
+            nowUtc: ref.read(referenceUtcProvider),
+          );
+      Navigator.of(context).pop(true);
+    }
   }
 
   @override
@@ -203,11 +264,27 @@ class _RecurringTransactionSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(
-              widget.existing == null
-                  ? 'Thêm giao dịch định kỳ'
-                  : 'Cập nhật giao dịch định kỳ',
-              style: Theme.of(context).textTheme.titleLarge,
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    widget.existing == null
+                        ? 'Thêm giao dịch định kỳ'
+                        : 'Cập nhật giao dịch định kỳ',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                if (widget.existing != null)
+                  IconButton(
+                    key: const Key('btn_delete_recurring'),
+                    tooltip: ViStrings.deleteAction,
+                    onPressed: _confirmDelete,
+                    icon: Icon(
+                      Icons.delete_outline_rounded,
+                      color: tokens.danger,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 10),
             if (_formError != null) ...<Widget>[
@@ -356,10 +433,15 @@ class _RecurringTransactionSheetState
                     key: const Key('input_recurring_start_on'),
                     controller: _startOnController,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Ngày bắt đầu *',
                       hintText: 'YYYY-MM-DD',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        tooltip: 'Chọn ngày',
+                        icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                        onPressed: () => _pickRecurringDate(_startOnController),
+                      ),
                     ),
                   ),
                 ),
@@ -369,10 +451,15 @@ class _RecurringTransactionSheetState
                     key: const Key('input_recurring_end_on'),
                     controller: _endOnController,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Kết thúc (tùy chọn)',
                       hintText: 'YYYY-MM-DD',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        tooltip: 'Chọn ngày',
+                        icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                        onPressed: () => _pickRecurringDate(_endOnController),
+                      ),
                     ),
                   ),
                 ),

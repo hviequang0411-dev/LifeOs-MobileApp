@@ -12,19 +12,35 @@ import 'widgets/goal_milestones_sheet.dart';
 import 'widgets/note_editor_sheet.dart';
 
 /// Tab 3: Màn hình **Tri thức & Mục tiêu (`Notes` & `Goals`)** — Botanical Premium v2 (`UPW6`)
-class KnowledgeAndGoalsTabView extends ConsumerWidget {
+class KnowledgeAndGoalsTabView extends ConsumerStatefulWidget {
   const KnowledgeAndGoalsTabView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<KnowledgeAndGoalsTabView> createState() =>
+      _KnowledgeAndGoalsTabViewState();
+}
+
+class _KnowledgeAndGoalsTabViewState
+    extends ConsumerState<KnowledgeAndGoalsTabView> {
+  bool _showArchivedNotes = false;
+
+  @override
+  Widget build(BuildContext context) {
     final String userId = ref.watch(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.watch(localRepositoryProvider);
     final LifeOsTokens tokens = LifeOsTokens.of(context);
 
-    final List<LocalEntityRow> notes =
+    final List<LocalEntityRow> allNotes =
         ref.watch(entitiesByTypeStreamProvider(SyncEntityType.note)).valueOrNull ??
             const <LocalEntityRow>[];
     ref.watch(entitiesByTypeStreamProvider(SyncEntityType.noteLink));
+    final List<LocalEntityRow> tags =
+        ref.watch(entitiesByTypeStreamProvider(SyncEntityType.tag)).valueOrNull ??
+            const <LocalEntityRow>[];
+    final List<LocalEntityRow> noteTags = ref
+            .watch(entitiesByTypeStreamProvider(SyncEntityType.noteTag))
+            .valueOrNull ??
+        const <LocalEntityRow>[];
     final List<LocalEntityRow> goals =
         ref.watch(entitiesByTypeStreamProvider(SyncEntityType.goal)).valueOrNull ??
             const <LocalEntityRow>[];
@@ -32,6 +48,32 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
             .watch(entitiesByTypeStreamProvider(SyncEntityType.goalMilestone))
             .valueOrNull ??
         const <LocalEntityRow>[];
+
+    final Map<String, LocalEntityRow> tagById = <String, LocalEntityRow>{
+      for (final LocalEntityRow t in tags) t.id: t,
+    };
+    final Map<String, List<LocalEntityRow>> tagsByNoteId =
+        <String, List<LocalEntityRow>>{};
+    for (final LocalEntityRow nt in noteTags) {
+      final String? nId = nt.payload['noteId'] as String?;
+      final String? tId = nt.payload['tagId'] as String?;
+      final LocalEntityRow? tag = tId != null ? tagById[tId] : null;
+      if (nId != null && tag != null) {
+        tagsByNoteId.putIfAbsent(nId, () => <LocalEntityRow>[]).add(tag);
+      }
+    }
+
+    final int archivedCount =
+        allNotes.where((LocalEntityRow n) => n.payload['archived'] == true).length;
+    final List<LocalEntityRow> filteredNotes = _showArchivedNotes
+        ? allNotes
+        : allNotes
+            .where((LocalEntityRow n) => n.payload['archived'] != true)
+            .toList();
+    final List<LocalEntityRow> notes = <LocalEntityRow>[
+      ...filteredNotes.where((LocalEntityRow n) => n.payload['pinned'] == true),
+      ...filteredNotes.where((LocalEntityRow n) => n.payload['pinned'] != true),
+    ];
 
     final DateTime refUtc = ref.watch(referenceUtcProvider);
     final String todayIso =
@@ -86,12 +128,32 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: LifeOsTokens.space2),
-        if (notes.isEmpty)
+        if (archivedCount > 0) ...<Widget>[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              key: const Key('chip_toggle_archived_notes'),
+              selected: _showArchivedNotes,
+              avatar: const Icon(Icons.inventory_2_outlined, size: 16),
+              label: Text('Lưu trữ ($archivedCount)'),
+              onSelected: (bool v) => setState(() => _showArchivedNotes = v),
+            ),
+          ),
+          const SizedBox(height: LifeOsTokens.space2),
+        ],
+        if (allNotes.isEmpty)
           const LifeOsEmptyState(
             icon: Icons.menu_book_outlined,
             title: 'Kho tri thức cá nhân đang trống',
             subtitle:
                 'Viết ghi chú và gắn liên kết tới Công việc hoặc Mục tiêu.',
+          )
+        else if (notes.isEmpty)
+          LifeOsEmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'Không có ghi chú đang hoạt động',
+            subtitle:
+                'Hiện có $archivedCount ghi chú đã lưu trữ. Bật "Lưu trữ ($archivedCount)" ở trên để xem lại.',
           )
         else
           Column(
@@ -100,6 +162,8 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
                 userId: userId,
                 noteId: n.id,
               );
+              final List<LocalEntityRow> attachedTags =
+                  tagsByNoteId[n.id] ?? const <LocalEntityRow>[];
               final String rawContent =
                   (n.payload['content'] as String?)?.trim() ?? '';
               final String preview = rawContent
@@ -108,6 +172,7 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
                   .trim();
 
               final bool isPinned = n.payload['pinned'] == true;
+              final bool isArchived = n.payload['archived'] == true;
               return Padding(
                 padding: const EdgeInsets.only(bottom: LifeOsTokens.space2),
                 child: LifeOsCard(
@@ -168,6 +233,14 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
                                         color: tokens.domainKnowledge,
                                       ),
                                     ],
+                                    if (isArchived) ...<Widget>[
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.archive_outlined,
+                                        size: 14,
+                                        color: tokens.textMuted,
+                                      ),
+                                    ],
                                   ],
                                 ),
                             if (preview.isNotEmpty) ...<Widget>[
@@ -184,40 +257,75 @@ class KnowledgeAndGoalsTabView extends ConsumerWidget {
                               ),
                             ],
                             const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: tokens.domainKnowledge
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(
-                                  LifeOsTokens.radiusPill,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Icon(
-                                    Icons.link_rounded,
-                                    size: 13,
-                                    color: tokens.domainKnowledge,
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: <Widget>[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${links.length} liên kết',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: tokens.domainKnowledge,
-                                      fontFeatures: const <FontFeature>[
-                                        FontFeature.tabularFigures(),
-                                      ],
+                                  decoration: BoxDecoration(
+                                    color: tokens.domainKnowledge
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(
+                                      LifeOsTokens.radiusPill,
                                     ),
                                   ),
-                                ],
-                              ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(
+                                        Icons.link_rounded,
+                                        size: 13,
+                                        color: tokens.domainKnowledge,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${links.length} liên kết',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: tokens.domainKnowledge,
+                                          fontFeatures: const <FontFeature>[
+                                            FontFeature.tabularFigures(),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ...attachedTags.map((LocalEntityRow tag) {
+                                  final String tagName =
+                                      (tag.payload['name'] as String?) ??
+                                          'Nhãn';
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tokens.bgElevated,
+                                      borderRadius: BorderRadius.circular(
+                                        LifeOsTokens.radiusPill,
+                                      ),
+                                      border: Border.all(
+                                        color: tokens.borderSubtle,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '#$tagName',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: tokens.textSecondary,
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
                             ),
                           ],
                         ),

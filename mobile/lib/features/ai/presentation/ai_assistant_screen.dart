@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n/vi_strings.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/time/user_day_clock.dart';
 import '../../../core/widgets/lifeos_widgets.dart';
 import '../data/ai_api.dart';
 import '../data/ai_models.dart';
@@ -34,8 +36,12 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
   final ScrollController _scrollController = ScrollController();
 
   List<AiMessageResponse> _messages = <AiMessageResponse>[];
+  String? _messagesNextCursor;
+  bool _hasMoreMessages = false;
+  bool _isLoadingOlderMessages = false;
   bool _isLoadingHistory = false;
   bool _isSending = false;
+  bool _loadingPlan = false;
   int _waitingSeconds = 0;
   Timer? _waitingTimer;
 
@@ -75,6 +81,9 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
     setState(() {
       _isLoadingHistory = true;
       _messages.clear();
+      _messagesNextCursor = null;
+      _hasMoreMessages = false;
+      _isLoadingOlderMessages = false;
       _currentError = null;
     });
 
@@ -108,7 +117,9 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
       ref.read(aiActiveConversationIdProvider.notifier).state = convId;
       if (mounted) {
         setState(() {
-          _messages = detail.messages.items;
+          _messages = List<AiMessageResponse>.from(detail.messages.items);
+          _messagesNextCursor = detail.messages.nextCursor;
+          _hasMoreMessages = detail.messages.hasMore;
           _isLoadingHistory = false;
         });
         _scrollToBottom();
@@ -119,6 +130,45 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
           _isLoadingHistory = false;
           _currentError = ViStrings.mapAiError(_extractErrorCode(e));
         });
+      }
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    final String? convId = ref.read(aiActiveConversationIdProvider);
+    if (convId == null ||
+        _isLoadingOlderMessages ||
+        !_hasMoreMessages ||
+        _messagesNextCursor == null) {
+      return;
+    }
+    setState(() => _isLoadingOlderMessages = true);
+    final AiApiClient api = ref.read(aiApiClientProvider);
+    try {
+      final AiConversationDetailResponse detail = await api.getConversation(
+        convId,
+        cursor: _messagesNextCursor,
+      );
+      if (mounted) {
+        final Set<String> seen =
+            _messages.map((AiMessageResponse m) => m.id).toSet();
+        final List<AiMessageResponse> olderUnique = detail.messages.items
+            .where((AiMessageResponse m) => !seen.contains(m.id))
+            .toList();
+        setState(() {
+          _messages = <AiMessageResponse>[...olderUnique, ..._messages];
+          _messagesNextCursor = detail.messages.nextCursor;
+          _hasMoreMessages = detail.messages.hasMore;
+          _isLoadingOlderMessages = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingOlderMessages = false);
+        final AiErrorDescriptor err = ViStrings.mapAiError(_extractErrorCode(e));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err.message)),
+        );
       }
     }
   }
@@ -139,11 +189,20 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
     final String text = (retryText ?? _inputController.text).trim();
     if (text.isEmpty || _isSending) return;
 
-    final String? convId = ref.read(aiActiveConversationIdProvider);
-    if (convId == null) {
+    String? resolvedConvId = ref.read(aiActiveConversationIdProvider);
+    if (resolvedConvId == null) {
       await _startNewConversation();
+      resolvedConvId = ref.read(aiActiveConversationIdProvider);
     }
-    final String resolvedConvId = ref.read(aiActiveConversationIdProvider)!;
+    if (resolvedConvId == null) {
+      if (mounted) {
+        setState(() {
+          _lastFailedMessage = text;
+          _currentError ??= ViStrings.mapAiError('NETWORK_ERROR');
+        });
+      }
+      return;
+    }
 
     if (retryText == null) {
       _inputController.clear();
@@ -165,8 +224,13 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
       createdAt: DateTime.now().toUtc().toIso8601String(),
     );
 
+    final bool alreadyHasPendingUserBubble = retryText != null &&
+        _messages.isNotEmpty &&
+        _messages.last.role == AiMessageRole.user &&
+        _messages.last.content == text;
+
     setState(() {
-      if (retryText == null) {
+      if (!alreadyHasPendingUserBubble) {
         _messages.add(tempUserMsg);
       }
       _isSending = true;
@@ -315,7 +379,8 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
     );
   }
 
-  Future<void> _handleDailyPlan() async {
+  Future<void> _handlePlanRequest({required bool weekly}) async {
+    if (_loadingPlan) return;
     final AiPreferencesResponse prefs =
         ref.read(aiPreferencesProvider).valueOrNull ??
             AiPreferencesResponse.initialDefault();
@@ -331,15 +396,30 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
       return;
     }
 
-    final DateTime now = DateTime.now().toUtc();
-    final String today =
-        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    if (!ref.read(aiIsOnlineProvider)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cần kết nối mạng để dùng AI lập kế hoạch.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _loadingPlan = true);
+    final String userId = ref.read(currentUserIdProvider);
+    final DateTime refUtc = ref.read(referenceUtcProvider);
+    final UserDayClock clock =
+        ref.read(localRepositoryProvider).getUserDayClock(userId);
+    final String todayIso = clock.businessDateForUtc(refUtc);
+    final String periodStart =
+        weekly ? clock.startOfWeekForDate(todayIso) : todayIso;
     final AiApiClient api = ref.read(aiApiClientProvider);
 
     try {
-      final AiPlanResponse plan = await api.createDailyPlan(today, <String>[
-        AiContextDomain.taskCalendar.code,
-      ]);
+      final List<String> domains = <String>[AiContextDomain.taskCalendar.code];
+      final AiPlanResponse plan = weekly
+          ? await api.createWeeklyPlan(periodStart, domains)
+          : await api.createDailyPlan(periodStart, domains);
       if (mounted) {
         unawaited(
           showModalBottomSheet<void>(
@@ -358,6 +438,10 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(desc.message)),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPlan = false);
       }
     }
   }
@@ -492,17 +576,48 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
                             horizontal: LifeOsTokens.space3,
                             vertical: LifeOsTokens.space3,
                           ),
-                          itemCount: _messages.length +
+                          itemCount: (_hasMoreMessages ? 1 : 0) +
+                              _messages.length +
                               (_isSending ? 1 : 0) +
                               (_currentError != null ? 1 : 0),
                           itemBuilder: (BuildContext ctx, int idx) {
-                            if (idx < _messages.length) {
+                            final int headerOffset = _hasMoreMessages ? 1 : 0;
+                            if (_hasMoreMessages && idx == 0) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Center(
+                                  child: TextButton.icon(
+                                    key: const Key('btn_load_older_ai_messages'),
+                                    onPressed: _isLoadingOlderMessages
+                                        ? null
+                                        : _loadOlderMessages,
+                                    icon: _isLoadingOlderMessages
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.expand_less_rounded,
+                                            size: 18),
+                                    label: Text(
+                                      _isLoadingOlderMessages
+                                          ? 'Đang tải...'
+                                          : 'Tải tin nhắn cũ hơn',
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            final int msgIdx = idx - headerOffset;
+                            if (msgIdx < _messages.length) {
                               return _buildMessageItem(
-                                _messages[idx],
+                                _messages[msgIdx],
                                 tokens,
                               );
                             } else if (_isSending &&
-                                idx == _messages.length) {
+                                msgIdx == _messages.length) {
                               return _buildWaitingBubble(tokens);
                             } else {
                               return _buildErrorBubble(tokens);
@@ -522,13 +637,35 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
                   scrollDirection: Axis.horizontal,
                   children: <Widget>[
                     ActionChip(
+                      key: const Key('chip_ai_daily_plan'),
                       visualDensity: VisualDensity.compact,
-                      avatar: const Icon(Icons.today_rounded, size: 14),
+                      avatar: _loadingPlan
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.today_rounded, size: 14),
                       label: const Text(
                         'Gợi ý Kế hoạch Hôm nay',
                         style: TextStyle(fontSize: 11.5),
                       ),
-                      onPressed: _handleDailyPlan,
+                      onPressed: _loadingPlan
+                          ? null
+                          : () => _handlePlanRequest(weekly: false),
+                    ),
+                    const SizedBox(width: 8),
+                    ActionChip(
+                      key: const Key('chip_ai_weekly_plan'),
+                      visualDensity: VisualDensity.compact,
+                      avatar: const Icon(Icons.date_range_rounded, size: 14),
+                      label: const Text(
+                        'Lập kế hoạch tuần',
+                        style: TextStyle(fontSize: 11.5),
+                      ),
+                      onPressed: _loadingPlan
+                          ? null
+                          : () => _handlePlanRequest(weekly: true),
                     ),
                   ],
                 ),

@@ -448,5 +448,147 @@ class KnowledgeAndGoalLocalRepository {
       nowUtc: nowUtc,
     );
   }
+
+  /// Tạo nhãn (`tag`) theo `SYNC_PROTOCOL.md` §6.1.
+  String createTag({
+    required String userId,
+    required String name,
+    String color = '#1B6B50',
+    DateTime? nowUtc,
+  }) {
+    final String trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Tên nhãn không được rỗng.');
+    }
+    for (final LocalEntityRow row in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.tag,
+    )) {
+      if ((row.payload['name'] as String?)?.trim().toLowerCase() ==
+          trimmed.toLowerCase()) {
+        return row.id;
+      }
+    }
+    final String id = _uuid.v4();
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.tag,
+      entityId: id,
+      op: 'CREATE',
+      payload: <String, dynamic>{
+        'id': id,
+        'name': trimmed,
+        'color': color,
+      },
+      nowUtc: nowUtc,
+    );
+    return id;
+  }
+
+  /// Xóa mềm nhãn (`tag`) và toàn bộ liên kết `note_tag` trỏ tới nhãn đó.
+  void deleteTag({
+    required String userId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) {
+    for (final LocalEntityRow link in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.noteTag,
+    )) {
+      if (link.payload['tagId'] == tagId) {
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.noteTag,
+          entityId: link.id,
+          op: 'DELETE',
+          payload: <String, dynamic>{'id': link.id},
+          nowUtc: nowUtc,
+        );
+      }
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.tag,
+      entityId: tagId,
+      op: 'DELETE',
+      payload: <String, dynamic>{'id': tagId},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Gắn nhãn vào ghi chú (`note_tag`, idempotent theo cặp `noteId`/`tagId`).
+  String attachTagToNote({
+    required String userId,
+    required String noteId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) {
+    for (final LocalEntityRow row in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.noteTag,
+    )) {
+      if (row.payload['noteId'] == noteId && row.payload['tagId'] == tagId) {
+        return row.id;
+      }
+    }
+    final String id = _uuid.v4();
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.noteTag,
+      entityId: id,
+      op: 'CREATE',
+      payload: <String, dynamic>{
+        'id': id,
+        'noteId': noteId,
+        'tagId': tagId,
+      },
+      nowUtc: nowUtc,
+    );
+    return id;
+  }
+
+  /// Gỡ nhãn khỏi ghi chú (`note_tag`).
+  void detachTagFromNote({
+    required String userId,
+    required String noteId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) {
+    for (final LocalEntityRow row in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.noteTag,
+    )) {
+      if (row.payload['noteId'] == noteId && row.payload['tagId'] == tagId) {
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.noteTag,
+          entityId: row.id,
+          op: 'DELETE',
+          payload: <String, dynamic>{'id': row.id},
+          nowUtc: nowUtc,
+        );
+      }
+    }
+  }
+
+  /// Trả về tập `tagId` đang gắn trên một ghi chú.
+  Set<String> listTagIdsForNote({
+    required String userId,
+    required String noteId,
+  }) {
+    final Set<String> result = <String>{};
+    for (final LocalEntityRow row in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.noteTag,
+    )) {
+      if (row.payload['noteId'] == noteId) {
+        final String? tagId = row.payload['tagId'] as String?;
+        if (tagId != null && tagId.isNotEmpty) {
+          result.add(tagId);
+        }
+      }
+    }
+    return result;
+  }
 }
 

@@ -240,5 +240,194 @@ class CalendarLocalRepository {
     );
     return id;
   }
+
+  /// Cập nhật sự kiện lịch (`calendar_event`).
+  void updateCalendarEvent({
+    required String userId,
+    required String eventId,
+    required String title,
+    String? description,
+    String? location,
+    bool? allDay,
+    String? startLocal,
+    String? endLocal,
+    String? startDate,
+    String? endDate,
+    String? timezone,
+    Map<String, dynamic>? recurrence,
+    bool clearRecurrence = false,
+    String? recurrenceUntil,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.calendarEvent,
+      entityId: eventId,
+    );
+    if (existing == null) return;
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['id'] = eventId;
+    next['title'] = title.trim();
+    if (description != null) {
+      if (description.trim().isEmpty) {
+        next.remove('description');
+      } else {
+        next['description'] = description.trim();
+      }
+    }
+    if (location != null) {
+      if (location.trim().isEmpty) {
+        next.remove('location');
+      } else {
+        next['location'] = location.trim();
+      }
+    }
+    if (allDay != null) next['allDay'] = allDay;
+    if (timezone != null && timezone.trim().isNotEmpty) {
+      next['timezone'] = timezone.trim();
+    }
+    if (startLocal != null) next['startLocal'] = startLocal;
+    if (endLocal != null) next['endLocal'] = endLocal;
+    if (startDate != null) {
+      if (startDate.isEmpty) {
+        next.remove('startDate');
+      } else {
+        next['startDate'] = startDate;
+      }
+    }
+    if (endDate != null) {
+      if (endDate.isEmpty) {
+        next.remove('endDate');
+      } else {
+        next['endDate'] = endDate;
+      }
+    }
+    if (clearRecurrence) {
+      next.remove('recurrence');
+      next.remove('recurrenceUntil');
+    } else if (recurrence != null) {
+      next['recurrence'] = _normalizeRecurrenceObject(recurrence);
+    }
+    if (recurrenceUntil != null && !clearRecurrence) {
+      if (recurrenceUntil.trim().isEmpty) {
+        next.remove('recurrenceUntil');
+      } else {
+        next['recurrenceUntil'] = recurrenceUntil.trim();
+      }
+    }
+
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.calendarEvent,
+      entityId: eventId,
+      op: 'UPDATE',
+      payload: next,
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm sự kiện lịch (`calendar_event`).
+  void deleteCalendarEvent({
+    required String userId,
+    required String eventId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.calendarEvent,
+      entityId: eventId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Tạo khối tập trung thời gian (`time_block`) theo `SYNC_PROTOCOL.md` §6.1.
+  String createTimeBlock({
+    required String userId,
+    String? taskId,
+    required String startAtIso,
+    required String endAtIso,
+    String? note,
+    DateTime? nowUtc,
+  }) {
+    final String id = _uuid.v4();
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.timeBlock,
+      entityId: id,
+      op: 'CREATE',
+      payload: <String, dynamic>{
+        'id': id,
+        if (taskId != null && taskId.isNotEmpty) 'taskId': taskId,
+        'startAt': startAtIso,
+        'endAt': endAtIso,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+      nowUtc: nowUtc,
+    );
+    return id;
+  }
+
+  /// Cập nhật khối thời gian (`time_block`).
+  void updateTimeBlock({
+    required String userId,
+    required String timeBlockId,
+    String? taskId,
+    bool clearTask = false,
+    required String startAtIso,
+    required String endAtIso,
+    String? note,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.timeBlock,
+      entityId: timeBlockId,
+    );
+    if (existing == null) return;
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['id'] = timeBlockId;
+    if (clearTask) {
+      next.remove('taskId');
+    } else if (taskId != null) {
+      next['taskId'] = taskId.isEmpty ? null : taskId;
+    }
+    next['startAt'] = startAtIso;
+    next['endAt'] = endAtIso;
+    if (note != null) {
+      if (note.trim().isEmpty) {
+        next.remove('note');
+      } else {
+        next['note'] = note.trim();
+      }
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.timeBlock,
+      entityId: timeBlockId,
+      op: 'UPDATE',
+      payload: next,
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm khối thời gian (`time_block`).
+  void deleteTimeBlock({
+    required String userId,
+    required String timeBlockId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.timeBlock,
+      entityId: timeBlockId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
 }
 

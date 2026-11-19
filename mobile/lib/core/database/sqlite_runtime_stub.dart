@@ -35,7 +35,10 @@ CommonDatabase openUserExtrasRawDatabase(
   );
 }
 
-void deleteLocalDatabaseFiles(String userId) {
+void deleteLocalDatabaseFiles(
+  String userId, {
+  String? baseDirectory,
+}) {
   // Không có thao tác tệp trên nền tảng không xác định.
 }
 

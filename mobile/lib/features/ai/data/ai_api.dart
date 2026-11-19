@@ -20,7 +20,7 @@ class AiApiClient {
   Future<AiPreferencesResponse> getPreferences() async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/preferences',
+        '/ai/preferences',
       );
       final Map<String, dynamic> data =
           _asMap(resp.data) ?? <String, dynamic>{};
@@ -36,7 +36,7 @@ class AiApiClient {
   ) async {
     try {
       final Response<dynamic> resp = await _dio.put<dynamic>(
-        '/api/v1/ai/preferences',
+        '/ai/preferences',
         data: request.toJson(),
       );
       final Map<String, dynamic> data =
@@ -54,7 +54,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/conversations',
+        '/ai/conversations',
         queryParameters: <String, dynamic>{
           'limit': limit,
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
@@ -72,7 +72,7 @@ class AiApiClient {
   Future<AiConversationResponse> createConversation({String? title}) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/conversations',
+        '/ai/conversations',
         data: <String, dynamic>{'title': title},
       );
       final Map<String, dynamic> data =
@@ -91,7 +91,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/conversations/$id',
+        '/ai/conversations/$id',
         queryParameters: <String, dynamic>{
           'limit': limit,
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
@@ -108,7 +108,7 @@ class AiApiClient {
   /// Xóa cuộc hội thoại (`DELETE /api/v1/ai/conversations/{id}`).
   Future<void> deleteConversation(String id) async {
     try {
-      await _dio.delete<dynamic>('/api/v1/ai/conversations/$id');
+      await _dio.delete<dynamic>('/ai/conversations/$id');
     } catch (e) {
       throw LifeOsApiClient.normalizeError(e);
     }
@@ -121,7 +121,7 @@ class AiApiClient {
   ) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/conversations/$conversationId/messages',
+        '/ai/conversations/$conversationId/messages',
         data: request.toJson(),
         options: Options(
           receiveTimeout: _aiCallTimeout,
@@ -140,7 +140,7 @@ class AiApiClient {
   Future<AiContextResponse> getMessageContext(String messageId) async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/messages/$messageId/context',
+        '/ai/messages/$messageId/context',
       );
       final Map<String, dynamic> data =
           _asMap(resp.data) ?? <String, dynamic>{};
@@ -153,7 +153,7 @@ class AiApiClient {
   /// Xóa toàn bộ dữ liệu AI trên server và reset consent về tắt (`DELETE /api/v1/ai/data`).
   Future<void> deleteAllData() async {
     try {
-      await _dio.delete<dynamic>('/api/v1/ai/data');
+      await _dio.delete<dynamic>('/ai/data');
     } catch (e) {
       throw LifeOsApiClient.normalizeError(e);
     }
@@ -163,7 +163,7 @@ class AiApiClient {
   Future<AiPlanResponse> createDailyPlan(String periodStart, List<String> domains) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/plans/daily',
+        '/ai/plans/daily',
         data: <String, dynamic>{
           'periodStart': periodStart,
           'contextDomains': domains,
@@ -182,7 +182,7 @@ class AiApiClient {
   Future<AiPlanResponse> createWeeklyPlan(String periodStart, List<String> domains) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/plans/weekly',
+        '/ai/plans/weekly',
         data: <String, dynamic>{
           'periodStart': periodStart,
           'contextDomains': domains,
@@ -205,7 +205,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/tasks/$taskId/breakdown',
+        '/ai/tasks/$taskId/breakdown',
         data: <String, dynamic>{
           'instruction': instruction,
           'contextDomains': contextDomains,
@@ -228,7 +228,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/insights/habits',
+        '/ai/insights/habits',
         data: <String, dynamic>{
           'from': from,
           'to': to,
@@ -253,7 +253,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/insights/finance',
+        '/ai/insights/finance',
         data: <String, dynamic>{
           'from': from,
           'to': to,
@@ -278,7 +278,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.post<dynamic>(
-        '/api/v1/ai/notes/$noteId/summary',
+        '/ai/notes/$noteId/summary',
         data: <String, dynamic>{
           'style': style,
           'contextDomains': contextDomains,
@@ -300,7 +300,7 @@ class AiApiClient {
   }) async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/usage',
+        '/ai/usage',
         queryParameters: <String, dynamic>{'from': from, 'to': to},
       );
       final Map<String, dynamic> data =
@@ -315,7 +315,7 @@ class AiApiClient {
   Future<AiLimitsResponse> getLimits() async {
     try {
       final Response<dynamic> resp = await _dio.get<dynamic>(
-        '/api/v1/ai/limits',
+        '/ai/limits',
       );
       final Map<String, dynamic> data =
           _asMap(resp.data) ?? <String, dynamic>{};

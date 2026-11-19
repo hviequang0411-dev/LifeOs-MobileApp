@@ -84,7 +84,10 @@ CommonDatabase openUserExtrasRawDatabase(
   return _requireWebSqlite().open('/lifeos_local_extras_$userId.sqlite');
 }
 
-void deleteLocalDatabaseFiles(String userId) {
+void deleteLocalDatabaseFiles(
+  String userId, {
+  String? baseDirectory,
+}) {
   final VirtualFileSystem? vfs = _webVfs;
   if (vfs == null) return;
   for (final String path in <String>[

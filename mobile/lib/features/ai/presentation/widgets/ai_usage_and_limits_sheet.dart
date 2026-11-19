@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/l10n/vi_strings.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
 import '../../data/ai_api.dart';
@@ -53,8 +55,11 @@ class _AiUsageAndLimitsSheetState extends ConsumerState<AiUsageAndLimitsSheet> {
       }
     } catch (e) {
       if (mounted) {
+        final AiErrorDescriptor err = ViStrings.mapAiError(
+          e is LifeOsApiException ? e.errorCode : null,
+        );
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = err.message;
           _isLoading = false;
         });
       }

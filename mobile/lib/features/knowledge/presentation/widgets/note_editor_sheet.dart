@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/l10n/vi_strings.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/sync/entity_types.dart';
 import '../../../../core/theme/app_tokens.dart';
@@ -36,6 +37,8 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
 
   bool _pinned = false;
   bool _archived = false;
+  bool _summarizing = false;
+  final Set<String> _pendingTagIds = <String>{};
   String? _titleError;
 
   @override
@@ -105,7 +108,17 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
   }
 
   Future<void> _handleAiSummarize() async {
-    if (widget.note == null) return;
+    if (widget.note == null || _summarizing) return;
+    if (!ref.read(aiIsOnlineProvider)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tính năng AI cần kết nối mạng để thực hiện.'),
+          ),
+        );
+      }
+      return;
+    }
     final AiPreferencesResponse prefs =
         ref.read(aiPreferencesProvider).valueOrNull ??
             AiPreferencesResponse.initialDefault();
@@ -132,6 +145,7 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
       return;
     }
 
+    setState(() => _summarizing = true);
     try {
       final AiApiClient api = ref.read(aiApiClientProvider);
       final AiNoteSummaryResponse summary = await api.summarizeNote(
@@ -152,10 +166,43 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
       }
     } catch (e) {
       if (mounted) {
+        final AiErrorDescriptor err =
+            ViStrings.mapAiError(e is LifeOsApiException ? e.errorCode : null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi tóm tắt ghi chú: $e')),
+          SnackBar(content: Text(err.message)),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _summarizing = false);
+      }
+    }
+  }
+
+  Future<void> _openCreateTagDialog() async {
+    final String? name = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => const _CreateTagDialog(),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+
+    final String userId = ref.read(currentUserIdProvider);
+    final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
+    final DateTime refUtc = ref.read(referenceUtcProvider);
+    final String tagId = repo.createTag(
+      userId: userId,
+      name: name,
+      nowUtc: refUtc,
+    );
+    if (widget.note != null) {
+      repo.attachTagToNote(
+        userId: userId,
+        noteId: widget.note!.id,
+        tagId: tagId,
+        nowUtc: refUtc,
+      );
+    } else {
+      setState(() => _pendingTagIds.add(tagId));
     }
   }
 
@@ -282,16 +329,27 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
 
     final String userId = ref.read(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
+    final DateTime refUtc = ref.read(referenceUtcProvider);
 
-    repo.saveNote(
+    final String savedNoteId = repo.saveNote(
       userId: userId,
       noteId: widget.note?.id,
       title: title,
       content: _contentController.text,
       pinned: _pinned,
       archived: _archived,
-      nowUtc: ref.read(referenceUtcProvider),
+      nowUtc: refUtc,
     );
+    if (widget.note == null && _pendingTagIds.isNotEmpty) {
+      for (final String tagId in _pendingTagIds) {
+        repo.attachTagToNote(
+          userId: userId,
+          noteId: savedNoteId,
+          tagId: tagId,
+          nowUtc: refUtc,
+        );
+      }
+    }
 
     if (mounted && Navigator.canPop(context)) {
       Navigator.of(context).pop(true);
@@ -308,6 +366,14 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
     final List<LocalEntityRow> links = widget.note != null
         ? repo.listLinksForNote(userId: userId, noteId: widget.note!.id)
         : const <LocalEntityRow>[];
+    final List<LocalEntityRow> allTags =
+        ref.watch(entitiesByTypeStreamProvider(SyncEntityType.tag)).valueOrNull ??
+            const <LocalEntityRow>[];
+    ref.watch(entitiesByTypeStreamProvider(SyncEntityType.noteTag));
+    final Set<String> activeTagIds = widget.note != null
+        ? repo.listTagIdsForNote(userId: userId, noteId: widget.note!.id)
+        : _pendingTagIds;
+    final bool isOnline = ref.watch(aiIsOnlineProvider);
 
     return Material(
       color: tokens.bgSurface,
@@ -317,11 +383,16 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomInset),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
               // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -337,17 +408,32 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
                         if (ref.watch(aiPreferencesProvider).valueOrNull?.notes == true)
                           TextButton.icon(
                             key: const Key('btn_ai_summarize_note'),
-                            onPressed: _handleAiSummarize,
-                            icon: Icon(
-                              Icons.auto_awesome_rounded,
-                              size: 16,
-                              color: tokens.accentPrimary,
-                            ),
+                            onPressed: _summarizing ? null : _handleAiSummarize,
+                            icon: _summarizing
+                                ? SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: tokens.accentPrimary,
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 16,
+                                    color: isOnline
+                                        ? tokens.accentPrimary
+                                        : tokens.textMuted,
+                                  ),
                             label: Text(
-                              'Tóm tắt AI',
+                              _summarizing ? 'Đang tóm tắt...' : 'Tóm tắt AI',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: tokens.accentPrimary,
+                                color: _summarizing
+                                    ? tokens.textSecondary
+                                    : (isOnline
+                                        ? tokens.accentPrimary
+                                        : tokens.textMuted),
                               ),
                             ),
                           ),
@@ -431,6 +517,85 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
                   onChanged: (bool val) => setState(() => _archived = val),
                 ),
 
+              // Tags Section
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text(
+                    'Nhãn',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: tokens.textPrimary,
+                      fontSize: 14,
+                    ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('btn_add_note_tag'),
+                    onPressed: _openCreateTagDialog,
+                    icon: const Icon(Icons.label_outline_rounded, size: 18),
+                    label: const Text('+ Nhãn'),
+                  ),
+                ],
+              ),
+              if (allTags.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Chưa có nhãn nào. Bấm "+ Nhãn" để phân loại ghi chú.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: allTags.map((LocalEntityRow tag) {
+                      final String tagName =
+                          (tag.payload['name'] as String?) ?? 'Nhãn';
+                      final bool selected = activeTagIds.contains(tag.id);
+                      return FilterChip(
+                        key: Key('chip_note_tag_${tag.id}'),
+                        label: Text('#$tagName'),
+                        selected: selected,
+                        onSelected: (bool next) {
+                          if (widget.note == null) {
+                            setState(() {
+                              if (next) {
+                                _pendingTagIds.add(tag.id);
+                              } else {
+                                _pendingTagIds.remove(tag.id);
+                              }
+                            });
+                            return;
+                          }
+                          final DateTime nowUtc = ref.read(referenceUtcProvider);
+                          if (next) {
+                            repo.attachTagToNote(
+                              userId: userId,
+                              noteId: widget.note!.id,
+                              tagId: tag.id,
+                              nowUtc: nowUtc,
+                            );
+                          } else {
+                            repo.detachTagFromNote(
+                              userId: userId,
+                              noteId: widget.note!.id,
+                              tagId: tag.id,
+                              nowUtc: nowUtc,
+                            );
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+
               // Links Section (if editing)
               if (widget.isEditing) ...<Widget>[
                 const Divider(),
@@ -501,22 +666,73 @@ class _NoteEditorSheetState extends ConsumerState<NoteEditorSheet> {
                     );
                   }),
               ],
-
-              const SizedBox(height: 16),
-
-              // Submit Button
-              FilledButton(
-                key: const Key('btn_save_note'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(LifeOsTokens.minTouchTarget),
+                  ],
                 ),
-                onPressed: _saveNote,
-                child: Text(widget.isEditing ? 'Lưu thay đổi' : 'Tạo ghi chú'),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 16),
+
+            // Submit Button
+            FilledButton(
+              key: const Key('btn_save_note'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(LifeOsTokens.minTouchTarget),
+              ),
+              onPressed: _saveNote,
+              child: Text(widget.isEditing ? 'Lưu thay đổi' : 'Tạo ghi chú'),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _CreateTagDialog extends StatefulWidget {
+  const _CreateTagDialog();
+
+  @override
+  State<_CreateTagDialog> createState() => _CreateTagDialogState();
+}
+
+class _CreateTagDialogState extends State<_CreateTagDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Tạo nhãn mới'),
+      content: TextField(
+        key: const Key('input_new_tag_name'),
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Tên nhãn *',
+          hintText: 'Ví dụ: Công việc, Học tập',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(ViStrings.cancelAction),
+        ),
+        FilledButton(
+          key: const Key('btn_confirm_create_tag'),
+          onPressed: () {
+            final String v = _controller.text.trim();
+            if (v.isEmpty) return;
+            Navigator.of(context).pop(v);
+          },
+          child: const Text('Tạo nhãn'),
+        ),
+      ],
     );
   }
 }

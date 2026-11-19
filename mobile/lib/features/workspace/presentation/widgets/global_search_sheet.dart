@@ -5,6 +5,12 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/sync/entity_types.dart';
 import '../../../../core/theme/app_tokens.dart';
+import '../../../calendar/presentation/widgets/plan_forms_sheets.dart';
+import '../../../finance/presentation/widgets/finance_forms_sheets.dart';
+import '../../../habits/presentation/widgets/habit_editor_sheet.dart';
+import '../../../knowledge/presentation/widgets/goal_milestones_sheet.dart';
+import '../../../knowledge/presentation/widgets/note_editor_sheet.dart';
+import '../../../tasks/presentation/widgets/task_editor_sheet.dart';
 
 class GlobalSearchSheet extends ConsumerStatefulWidget {
   const GlobalSearchSheet({super.key});
@@ -23,11 +29,32 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
     super.dispose();
   }
 
+  void _openEditorFor(BuildContext context, Widget sheet) {
+    final NavigatorState nav = Navigator.of(context);
+    final BuildContext hostContext = nav.context;
+    if (nav.canPop()) {
+      nav.pop();
+    }
+    showModalBottomSheet<void>(
+      context: hostContext,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => sheet,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final LifeOsTokens tokens = LifeOsTokens.of(context);
     final List<LocalEntityRow> allTasks =
         ref.watch(entitiesByTypeStreamProvider(SyncEntityType.task)).valueOrNull ??
+            const <LocalEntityRow>[];
+    final List<LocalEntityRow> allHabits =
+        ref.watch(entitiesByTypeStreamProvider(SyncEntityType.habit)).valueOrNull ??
+            const <LocalEntityRow>[];
+    final List<LocalEntityRow> allGoals =
+        ref.watch(entitiesByTypeStreamProvider(SyncEntityType.goal)).valueOrNull ??
             const <LocalEntityRow>[];
     final List<LocalEntityRow> allNotes =
         ref.watch(entitiesByTypeStreamProvider(SyncEntityType.note)).valueOrNull ??
@@ -40,6 +67,15 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
             .watch(entitiesByTypeStreamProvider(SyncEntityType.financeTransaction))
             .valueOrNull ??
         const <LocalEntityRow>[];
+    final List<LocalEntityRow> allCategories = ref
+            .watch(entitiesByTypeStreamProvider(SyncEntityType.financeCategory))
+            .valueOrNull ??
+        const <LocalEntityRow>[];
+
+    final Map<String, String> categoryNameById = <String, String>{
+      for (final LocalEntityRow c in allCategories)
+        c.id: (c.payload['name'] ?? '').toString(),
+    };
 
     final String q = _query.toLowerCase();
 
@@ -50,6 +86,26 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                 (t.payload['title'] ?? '').toString().toLowerCase();
             final String desc =
                 (t.payload['description'] ?? '').toString().toLowerCase();
+            return title.contains(q) || desc.contains(q);
+          }).toList();
+
+    final List<LocalEntityRow> matchedHabits = _query.isEmpty
+        ? const <LocalEntityRow>[]
+        : allHabits.where((LocalEntityRow h) {
+            final String name =
+                (h.payload['name'] ?? '').toString().toLowerCase();
+            final String desc =
+                (h.payload['description'] ?? '').toString().toLowerCase();
+            return name.contains(q) || desc.contains(q);
+          }).toList();
+
+    final List<LocalEntityRow> matchedGoals = _query.isEmpty
+        ? const <LocalEntityRow>[]
+        : allGoals.where((LocalEntityRow g) {
+            final String title =
+                (g.payload['title'] ?? '').toString().toLowerCase();
+            final String desc =
+                (g.payload['description'] ?? '').toString().toLowerCase();
             return title.contains(q) || desc.contains(q);
           }).toList();
 
@@ -68,7 +124,9 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
         : allEvents.where((LocalEntityRow e) {
             final String title =
                 (e.payload['title'] ?? '').toString().toLowerCase();
-            return title.contains(q);
+            final String location =
+                (e.payload['location'] ?? '').toString().toLowerCase();
+            return title.contains(q) || location.contains(q);
           }).toList();
 
     final List<LocalEntityRow> matchedTxs = _query.isEmpty
@@ -76,25 +134,33 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
         : allTxs.where((LocalEntityRow tx) {
             final String note =
                 (tx.payload['note'] ?? '').toString().toLowerCase();
-            final String cat =
-                (tx.payload['categoryName'] ?? '').toString().toLowerCase();
-            return note.contains(q) || cat.contains(q);
+            final String desc =
+                (tx.payload['description'] ?? '').toString().toLowerCase();
+            final String? catId = tx.payload['categoryId'] as String?;
+            final String cat = ((catId != null ? categoryNameById[catId] : null) ??
+                    tx.payload['categoryName'] ??
+                    '')
+                .toString()
+                .toLowerCase();
+            return note.contains(q) || desc.contains(q) || cat.contains(q);
           }).toList();
 
     final bool hasAnyResult = matchedTasks.isNotEmpty ||
+        matchedHabits.isNotEmpty ||
+        matchedGoals.isNotEmpty ||
         matchedNotes.isNotEmpty ||
         matchedEvents.isNotEmpty ||
         matchedTxs.isNotEmpty;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.88,
-      decoration: BoxDecoration(
-        color: tokens.bgSurface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(LifeOsTokens.radiusXl),
-        ),
+    return Material(
+      color: tokens.bgSurface,
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(LifeOsTokens.radiusXl),
       ),
-      child: Column(
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.88,
+        child: Column(
         children: <Widget>[
           Container(
             margin: const EdgeInsets.only(top: 10, bottom: 6),
@@ -114,10 +180,12 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
               children: <Widget>[
                 Expanded(
                   child: TextField(
+                    key: const Key('input_global_search'),
                     controller: _searchController,
                     autofocus: true,
                     decoration: InputDecoration(
-                      hintText: 'Tìm công việc, ghi chú, lịch hẹn, giao dịch...',
+                      hintText:
+                          'Tìm công việc, thói quen, mục tiêu, ghi chú, lịch, giao dịch...',
                       prefixIcon: Icon(
                         Icons.search_rounded,
                         color: tokens.textSecondary,
@@ -199,11 +267,12 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                             ),
                             const SizedBox(height: 8),
                             ...matchedTasks.map((LocalEntityRow t) {
-                              final bool isDone = (t.payload['status'] ?? '')
-                                      .toString()
-                                      .toUpperCase() ==
-                                  'DONE';
+                              final String status =
+                                  (t.payload['status'] ?? '').toString().toUpperCase();
+                              final bool isDone =
+                                  status == 'DONE' || status == 'COMPLETED';
                               return _SearchResultTile(
+                                tileKey: Key('search_result_task_${t.id}'),
                                 icon: isDone
                                     ? Icons.check_circle_rounded
                                     : Icons.circle_outlined,
@@ -211,6 +280,69 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                                 title: (t.payload['title'] ?? 'Công việc')
                                     .toString(),
                                 tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  TaskEditorSheet(task: t),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 16),
+                          ],
+                          if (matchedHabits.isNotEmpty) ...<Widget>[
+                            Text(
+                              'Thói quen (${matchedHabits.length})',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: tokens.domainHabit,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...matchedHabits.map((LocalEntityRow h) {
+                              return _SearchResultTile(
+                                tileKey: Key('search_result_habit_${h.id}'),
+                                icon: Icons.repeat_rounded,
+                                iconColor: tokens.domainHabit,
+                                title: (h.payload['name'] ?? 'Thói quen')
+                                    .toString(),
+                                subtitle: (h.payload['description'] ?? '')
+                                    .toString()
+                                    .trim(),
+                                tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  HabitEditorSheet(habit: h),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 16),
+                          ],
+                          if (matchedGoals.isNotEmpty) ...<Widget>[
+                            Text(
+                              'Mục tiêu dài hạn (${matchedGoals.length})',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: tokens.domainGoal,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...matchedGoals.map((LocalEntityRow g) {
+                              return _SearchResultTile(
+                                tileKey: Key('search_result_goal_${g.id}'),
+                                icon: Icons.flag_rounded,
+                                iconColor: tokens.domainGoal,
+                                title: (g.payload['title'] ?? 'Mục tiêu')
+                                    .toString(),
+                                subtitle: (g.payload['targetOn'] ??
+                                        g.payload['targetDate'] ??
+                                        '')
+                                    .toString(),
+                                tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  GoalEditorSheet(goal: g),
+                                ),
                               );
                             }),
                             const SizedBox(height: 16),
@@ -227,6 +359,7 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                             const SizedBox(height: 8),
                             ...matchedNotes.map((LocalEntityRow n) {
                               return _SearchResultTile(
+                                tileKey: Key('search_result_note_${n.id}'),
                                 icon: Icons.note_rounded,
                                 iconColor: tokens.domainKnowledge,
                                 title: (n.payload['title'] ?? 'Ghi chú')
@@ -236,6 +369,10 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                                     .replaceAll('#', '')
                                     .trim(),
                                 tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  NoteEditorSheet(note: n),
+                                ),
                               );
                             }),
                             const SizedBox(height: 16),
@@ -252,6 +389,7 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                             const SizedBox(height: 8),
                             ...matchedEvents.map((LocalEntityRow e) {
                               return _SearchResultTile(
+                                tileKey: Key('search_result_event_${e.id}'),
                                 icon: Icons.event_rounded,
                                 iconColor: tokens.domainCalendar,
                                 title:
@@ -259,6 +397,10 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                                 subtitle:
                                     (e.payload['startLocal'] ?? '').toString(),
                                 tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  CalendarEventSheet(event: e),
+                                ),
                               );
                             }),
                             const SizedBox(height: 16),
@@ -274,14 +416,29 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
                             ),
                             const SizedBox(height: 8),
                             ...matchedTxs.map((LocalEntityRow tx) {
+                              final String? catId =
+                                  tx.payload['categoryId'] as String?;
+                              final String catName =
+                                  (catId != null ? categoryNameById[catId] : null) ??
+                                      (tx.payload['categoryName'] as String?) ??
+                                      '';
+                              final String note =
+                                  (tx.payload['note'] as String?)?.trim() ?? '';
+                              final String title = note.isNotEmpty
+                                  ? note
+                                  : (catName.isNotEmpty ? catName : 'Giao dịch');
                               return _SearchResultTile(
+                                tileKey: Key('search_result_tx_${tx.id}'),
                                 icon: Icons.receipt_long_rounded,
                                 iconColor: tokens.domainFinance,
-                                title: (tx.payload['note'] ?? 'Giao dịch')
-                                    .toString(),
+                                title: title,
                                 subtitle:
                                     (tx.payload['occurredOn'] ?? '').toString(),
                                 tokens: tokens,
+                                onTap: () => _openEditorFor(
+                                  context,
+                                  FinanceTransactionSheet(transaction: tx),
+                                ),
                               );
                             }),
                           ],
@@ -290,68 +447,87 @@ class _GlobalSearchSheetState extends ConsumerState<GlobalSearchSheet> {
           ),
         ],
       ),
+      ),
     );
   }
 }
 
 class _SearchResultTile extends StatelessWidget {
   const _SearchResultTile({
+    this.tileKey,
     required this.icon,
     required this.iconColor,
     required this.title,
     required this.tokens,
     this.subtitle,
+    this.onTap,
   });
 
+  final Key? tileKey;
   final IconData icon;
   final Color iconColor;
   final String title;
   final String? subtitle;
   final LifeOsTokens tokens;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
         color: tokens.bgElevated,
-        borderRadius: BorderRadius.circular(LifeOsTokens.radiusMd),
-        border: Border.all(color: tokens.borderSubtle),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(icon, size: 18, color: iconColor),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LifeOsTokens.radiusMd),
+          side: BorderSide(color: tokens.borderSubtle),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: tileKey,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: tokens.textPrimary,
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: tokens.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ],
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: tokens.textMuted,
+                ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../../../../core/sync/entity_types.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../notification/data/local_notification_service.dart';
 import '../../../workspace/data/lifeos_local_repository.dart';
+import '../../../workspace/data/local_extras_repository.dart';
 
 /// Bảng Cài đặt Thông báo & Giờ im lặng (`MWP-A`):
 /// - Xin quyền `POST_NOTIFICATIONS` / iOS Alert ĐÚNG LÚC người dùng bật thông báo.
@@ -70,6 +73,9 @@ class _NotificationSettingsSheetState
     bool requestPermissionIfEnabling = false,
   }) async {
     ref.read(notificationPreferencesProvider.notifier).state = nextPrefs;
+    ref
+        .read(localExtrasRepositoryProvider)
+        .setPref('notification_prefs', jsonEncode(nextPrefs.toJson()));
     _statusMessage = null;
     await _reschedule(requestPermissionFirst: requestPermissionIfEnabling);
   }

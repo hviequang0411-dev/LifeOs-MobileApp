@@ -8,6 +8,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/sync/entity_types.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/lifeos_widgets.dart';
+import '../../auth/data/online_account_service.dart';
 import '../../auth/presentation/sign_in_welcome_view.dart';
 import '../../calendar/presentation/plan_tab_view.dart';
 import '../../finance/presentation/finance_tab_view.dart';
@@ -40,6 +41,7 @@ class _LifeOsShellScreenState extends ConsumerState<LifeOsShellScreen>
     with WidgetsBindingObserver {
   int _selectedIndex = 0;
   bool _fabVisible = true;
+  bool _cancellingDeletion = false;
 
   @override
   void initState() {
@@ -299,6 +301,36 @@ class _LifeOsShellScreenState extends ConsumerState<LifeOsShellScreen>
     );
   }
 
+  Future<void> _cancelDeletionRequest(BuildContext context) async {
+    setState(() => _cancellingDeletion = true);
+    try {
+      await ref.read(onlineAccountServiceProvider).cancelAccountDeletion();
+      if (!mounted) return;
+      ref.read(accountDeletionPendingBannerProvider.notifier).state = false;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Đã hủy yêu cầu xóa tài khoản. Tài khoản của bạn tiếp tục hoạt động bình thường.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(OnlineAccountService.formatAccountErrorVi(e)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _cancellingDeletion = false);
+      }
+    }
+  }
+
   Widget _buildDeletionCooldownBanner(BuildContext context) {
     final LifeOsTokens tokens = LifeOsTokens.of(context);
     return Container(
@@ -319,11 +351,17 @@ class _LifeOsShellScreenState extends ConsumerState<LifeOsShellScreen>
             ),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(accountDeletionPendingBannerProvider.notifier).state =
-                  false;
-            },
-            child: const Text('Hủy yêu cầu xóa'),
+            key: const Key('btn_banner_cancel_deletion'),
+            onPressed: _cancellingDeletion
+                ? null
+                : () => _cancelDeletionRequest(context),
+            child: _cancellingDeletion
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Hủy yêu cầu xóa'),
           ),
         ],
       ),
@@ -350,8 +388,10 @@ class _LifeOsShellScreenState extends ConsumerState<LifeOsShellScreen>
             ),
           ),
           TextButton(
+            key: const Key('btn_banner_reauth'),
             onPressed: () {
               ref.read(requiresReAuthBannerProvider.notifier).state = false;
+              ref.read(isSignedOutProvider.notifier).state = true;
             },
             child: const Text('Đăng nhập lại'),
           ),

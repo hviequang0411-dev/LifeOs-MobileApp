@@ -52,6 +52,27 @@ class NotificationPreferences {
           permissionRequestedOnce ?? this.permissionRequestedOnce,
     );
   }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'masterEnabled': masterEnabled,
+        'taskRemindersEnabled': taskRemindersEnabled,
+        'habitRemindersEnabled': habitRemindersEnabled,
+        'routineRemindersEnabled': routineRemindersEnabled,
+        'calendarRemindersEnabled': calendarRemindersEnabled,
+        'permissionRequestedOnce': permissionRequestedOnce,
+      };
+
+  factory NotificationPreferences.fromJson(Map<String, dynamic> json) {
+    return NotificationPreferences(
+      masterEnabled: json['masterEnabled'] as bool? ?? true,
+      taskRemindersEnabled: json['taskRemindersEnabled'] as bool? ?? true,
+      habitRemindersEnabled: json['habitRemindersEnabled'] as bool? ?? true,
+      routineRemindersEnabled: json['routineRemindersEnabled'] as bool? ?? true,
+      calendarRemindersEnabled: json['calendarRemindersEnabled'] as bool? ?? true,
+      permissionRequestedOnce:
+          json['permissionRequestedOnce'] as bool? ?? false,
+    );
+  }
 }
 
 /// Bộ lập lịch thông báo cục bộ và khử trùng thông báo (`docs/phases/PHASE_4_CALENDAR_NOTIFICATION.md` D132–D138):

@@ -223,6 +223,9 @@ class LifeOsLocalRepository {
   String createHabit({
     required String userId,
     required String name,
+    String? description,
+    String? color,
+    String? icon,
     String frequencyType = 'DAILY',
     String trackingType = 'BOOLEAN',
     int? targetCount,
@@ -231,11 +234,16 @@ class LifeOsLocalRepository {
     int? timesPerWeek,
     int? intervalDays,
     String? startOn,
+    String? endOn,
+    String? reminderTime,
     DateTime? nowUtc,
   }) =>
       tasks.createHabit(
         userId: userId,
         name: name,
+        description: description,
+        color: color,
+        icon: icon,
         frequencyType: frequencyType,
         trackingType: trackingType,
         targetCount: targetCount,
@@ -244,6 +252,105 @@ class LifeOsLocalRepository {
         timesPerWeek: timesPerWeek,
         intervalDays: intervalDays,
         startOn: startOn,
+        endOn: endOn,
+        reminderTime: reminderTime,
+        nowUtc: nowUtc,
+      );
+
+  void updateHabit({
+    required String userId,
+    required String habitId,
+    String? name,
+    String? description,
+    String? color,
+    String? icon,
+    String? frequencyType,
+    List<int>? daysOfWeek,
+    int? timesPerWeek,
+    int? intervalDays,
+    String? startOn,
+    String? endOn,
+    String? reminderTime,
+    bool? archived,
+    DateTime? nowUtc,
+  }) =>
+      tasks.updateHabit(
+        userId: userId,
+        habitId: habitId,
+        name: name,
+        description: description,
+        color: color,
+        icon: icon,
+        frequencyType: frequencyType,
+        daysOfWeek: daysOfWeek,
+        timesPerWeek: timesPerWeek,
+        intervalDays: intervalDays,
+        startOn: startOn,
+        endOn: endOn,
+        reminderTime: reminderTime,
+        archived: archived,
+        nowUtc: nowUtc,
+      );
+
+  void deleteHabit({
+    required String userId,
+    required String habitId,
+    DateTime? nowUtc,
+  }) =>
+      tasks.deleteHabit(
+        userId: userId,
+        habitId: habitId,
+        nowUtc: nowUtc,
+      );
+
+  void updateProject({
+    required String userId,
+    required String projectId,
+    required String name,
+    String? description,
+    String? color,
+    bool? archived,
+    DateTime? nowUtc,
+  }) =>
+      tasks.updateProject(
+        userId: userId,
+        projectId: projectId,
+        name: name,
+        description: description,
+        color: color,
+        archived: archived,
+        nowUtc: nowUtc,
+      );
+
+  void updateRoutine({
+    required String userId,
+    required String routineId,
+    required String name,
+    String? kind,
+    int? weekdays,
+    String? reminderTime,
+    List<({String title, int? durationMinutes})>? steps,
+    DateTime? nowUtc,
+  }) =>
+      tasks.updateRoutine(
+        userId: userId,
+        routineId: routineId,
+        name: name,
+        kind: kind,
+        weekdays: weekdays,
+        reminderTime: reminderTime,
+        steps: steps,
+        nowUtc: nowUtc,
+      );
+
+  void deleteRoutine({
+    required String userId,
+    required String routineId,
+    DateTime? nowUtc,
+  }) =>
+      tasks.deleteRoutine(
+        userId: userId,
+        routineId: routineId,
         nowUtc: nowUtc,
       );
 
@@ -396,6 +503,133 @@ class LifeOsLocalRepository {
         nowUtc: nowUtc,
       );
 
+  void updateFinanceAccount({
+    required String userId,
+    required String accountId,
+    required String name,
+    String? accountType,
+    String? currency,
+    bool? archived,
+    DateTime? nowUtc,
+  }) =>
+      finance.updateFinanceAccount(
+        userId: userId,
+        accountId: accountId,
+        name: name,
+        accountType: accountType,
+        currency: currency,
+        archived: archived,
+        nowUtc: nowUtc,
+      );
+
+  void deleteFinanceAccount({
+    required String userId,
+    required String accountId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteFinanceAccount(
+        userId: userId,
+        accountId: accountId,
+        nowUtc: nowUtc,
+      );
+
+  void updateFinanceTransaction({
+    required String userId,
+    required String transactionId,
+    String? accountId,
+    String? categoryId,
+    bool clearCategory = false,
+    String? kind,
+    Decimal10k? amount,
+    String? occurredOnIso,
+    String? note,
+    DateTime? nowUtc,
+  }) =>
+      finance.updateFinanceTransaction(
+        userId: userId,
+        transactionId: transactionId,
+        accountId: accountId,
+        categoryId: categoryId,
+        clearCategory: clearCategory,
+        kind: kind,
+        amount: amount,
+        occurredOnIso: occurredOnIso,
+        note: note,
+        nowUtc: nowUtc,
+      );
+
+  void deleteFinanceTransaction({
+    required String userId,
+    required String transactionId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteFinanceTransaction(
+        userId: userId,
+        transactionId: transactionId,
+        nowUtc: nowUtc,
+      );
+
+  void deleteAccountTransfer({
+    required String userId,
+    required String transferId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteAccountTransfer(
+        userId: userId,
+        transferId: transferId,
+        nowUtc: nowUtc,
+      );
+
+  void updateBudget({
+    required String userId,
+    required String budgetId,
+    required Decimal10k amount,
+    String? categoryId,
+    bool? archived,
+    DateTime? nowUtc,
+  }) =>
+      finance.updateBudget(
+        userId: userId,
+        budgetId: budgetId,
+        amount: amount,
+        categoryId: categoryId,
+        archived: archived,
+        nowUtc: nowUtc,
+      );
+
+  void deleteBudget({
+    required String userId,
+    required String budgetId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteBudget(
+        userId: userId,
+        budgetId: budgetId,
+        nowUtc: nowUtc,
+      );
+
+  void deleteSavingGoal({
+    required String userId,
+    required String goalId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteSavingGoal(
+        userId: userId,
+        goalId: goalId,
+        nowUtc: nowUtc,
+      );
+
+  void deleteRecurringTransaction({
+    required String userId,
+    required String recurringId,
+    DateTime? nowUtc,
+  }) =>
+      finance.deleteRecurringTransaction(
+        userId: userId,
+        recurringId: recurringId,
+        nowUtc: nowUtc,
+      );
+
   // ===========================================================================
   // 4. ỦY QUYỀN CALENDAR (`D126` JSON `recurrence`), REMINDER & NOTIFICATION (`D132`–`D138`)
   // ===========================================================================
@@ -472,6 +706,101 @@ class LifeOsLocalRepository {
         newEndLocal: newEndLocal,
         newTitle: newTitle,
         newRecurrence: newRecurrence,
+        nowUtc: nowUtc,
+      );
+
+  void updateCalendarEvent({
+    required String userId,
+    required String eventId,
+    required String title,
+    String? description,
+    String? location,
+    bool? allDay,
+    String? startLocal,
+    String? endLocal,
+    String? startDate,
+    String? endDate,
+    String? timezone,
+    Map<String, dynamic>? recurrence,
+    bool clearRecurrence = false,
+    String? recurrenceUntil,
+    DateTime? nowUtc,
+  }) =>
+      calendar.updateCalendarEvent(
+        userId: userId,
+        eventId: eventId,
+        title: title,
+        description: description,
+        location: location,
+        allDay: allDay,
+        startLocal: startLocal,
+        endLocal: endLocal,
+        startDate: startDate,
+        endDate: endDate,
+        timezone: timezone,
+        recurrence: recurrence,
+        clearRecurrence: clearRecurrence,
+        recurrenceUntil: recurrenceUntil,
+        nowUtc: nowUtc,
+      );
+
+  void deleteCalendarEvent({
+    required String userId,
+    required String eventId,
+    DateTime? nowUtc,
+  }) =>
+      calendar.deleteCalendarEvent(
+        userId: userId,
+        eventId: eventId,
+        nowUtc: nowUtc,
+      );
+
+  String createTimeBlock({
+    required String userId,
+    String? taskId,
+    required String startAtIso,
+    required String endAtIso,
+    String? note,
+    DateTime? nowUtc,
+  }) =>
+      calendar.createTimeBlock(
+        userId: userId,
+        taskId: taskId,
+        startAtIso: startAtIso,
+        endAtIso: endAtIso,
+        note: note,
+        nowUtc: nowUtc,
+      );
+
+  void updateTimeBlock({
+    required String userId,
+    required String timeBlockId,
+    String? taskId,
+    bool clearTask = false,
+    required String startAtIso,
+    required String endAtIso,
+    String? note,
+    DateTime? nowUtc,
+  }) =>
+      calendar.updateTimeBlock(
+        userId: userId,
+        timeBlockId: timeBlockId,
+        taskId: taskId,
+        clearTask: clearTask,
+        startAtIso: startAtIso,
+        endAtIso: endAtIso,
+        note: note,
+        nowUtc: nowUtc,
+      );
+
+  void deleteTimeBlock({
+    required String userId,
+    required String timeBlockId,
+    DateTime? nowUtc,
+  }) =>
+      calendar.deleteTimeBlock(
+        userId: userId,
+        timeBlockId: timeBlockId,
         nowUtc: nowUtc,
       );
 
@@ -653,5 +982,64 @@ class LifeOsLocalRepository {
         reflection: reflection,
         mood: mood,
         nowUtc: nowUtc,
+      );
+
+  String createTag({
+    required String userId,
+    required String name,
+    String color = '#1B6B50',
+    DateTime? nowUtc,
+  }) =>
+      knowledge.createTag(
+        userId: userId,
+        name: name,
+        color: color,
+        nowUtc: nowUtc,
+      );
+
+  void deleteTag({
+    required String userId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) =>
+      knowledge.deleteTag(
+        userId: userId,
+        tagId: tagId,
+        nowUtc: nowUtc,
+      );
+
+  String attachTagToNote({
+    required String userId,
+    required String noteId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) =>
+      knowledge.attachTagToNote(
+        userId: userId,
+        noteId: noteId,
+        tagId: tagId,
+        nowUtc: nowUtc,
+      );
+
+  void detachTagFromNote({
+    required String userId,
+    required String noteId,
+    required String tagId,
+    DateTime? nowUtc,
+  }) =>
+      knowledge.detachTagFromNote(
+        userId: userId,
+        noteId: noteId,
+        tagId: tagId,
+        nowUtc: nowUtc,
+      );
+
+  Set<String> listTagIdsForNote({
+    required String userId,
+    required String noteId,
+  }) =>
+      knowledge.listTagIdsForNote(
+        userId: userId,
+        noteId: noteId,
       );
 }

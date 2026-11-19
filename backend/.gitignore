@@ -5,3 +5,6 @@ target/
 .DS_Store
 .env
 *.log
+
+# Secret tự host qua Cloudflare Tunnel (scripts/tunnel-up.ps1)
+.env.tunnel

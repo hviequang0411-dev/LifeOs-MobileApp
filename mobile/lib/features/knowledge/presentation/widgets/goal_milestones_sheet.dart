@@ -9,6 +9,39 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
 import '../../../workspace/data/lifeos_local_repository.dart';
 
+bool _isValidIsoDate(String raw) {
+  final String trimmed = raw.trim();
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(trimmed)) return false;
+  final List<String> parts = trimmed.split('-');
+  final int? y = int.tryParse(parts[0]);
+  final int? m = int.tryParse(parts[1]);
+  final int? d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null) return false;
+  final DateTime dt = DateTime.utc(y, m, d);
+  return dt.year == y && dt.month == m && dt.day == d;
+}
+
+Future<void> _pickIsoDateInto({
+  required BuildContext context,
+  required TextEditingController controller,
+  required DateTime fallbackDate,
+}) async {
+  DateTime initial = fallbackDate;
+  if (_isValidIsoDate(controller.text)) {
+    initial = DateTime.parse(controller.text.trim());
+  }
+  final DateTime? picked = await showDatePicker(
+    context: context,
+    initialDate: initial,
+    firstDate: DateTime(2000),
+    lastDate: DateTime(2100),
+  );
+  if (picked != null) {
+    controller.text =
+        '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+  }
+}
+
 /// Biểu mẫu Tạo Mục tiêu dài hạn mới (`goal` + `milestone`) hỗ trợ nhiều cột mốc đồng thời.
 class CreateGoalSheet extends ConsumerStatefulWidget {
   const CreateGoalSheet({super.key});
@@ -36,6 +69,7 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
 
   final FocusNode _titleFocus = FocusNode();
   String? _titleError;
+  String? _dateError;
 
   @override
   void initState() {
@@ -74,13 +108,19 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
   void _addExtraMilestone() {
     final String title = _extraMilestoneTitleController.text.trim();
     if (title.isEmpty) return;
+    final String dueRaw = _extraMilestoneDueController.text.trim();
+    if (dueRaw.isNotEmpty && !_isValidIsoDate(dueRaw)) {
+      setState(() {
+        _dateError = 'Hạn cột mốc phải đúng định dạng YYYY-MM-DD.';
+      });
+      return;
+    }
     setState(() {
+      _dateError = null;
       _milestoneDrafts.add(
         GoalMilestoneDraft(
           title: title,
-          dueOnIso: _extraMilestoneDueController.text.trim().isEmpty
-              ? null
-              : _extraMilestoneDueController.text.trim(),
+          dueOnIso: dueRaw.isEmpty ? null : dueRaw,
         ),
       );
       _extraMilestoneTitleController.clear();
@@ -96,13 +136,39 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
     final String userId = ref.read(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
     final DateTime refUtc = ref.read(referenceUtcProvider);
+    final String todayIso = repo.getUserDayClock(userId).businessDateForUtc(refUtc);
+
+    final String startRaw = _startDateController.text.trim();
+    if (startRaw.isNotEmpty && !_isValidIsoDate(startRaw)) {
+      setState(() {
+        _dateError = 'Ngày bắt đầu phải đúng định dạng YYYY-MM-DD.';
+      });
+      return;
+    }
+    final String resolvedStart = startRaw.isEmpty ? todayIso : startRaw;
+    final String targetRaw = _targetDateController.text.trim();
+    if (!_isValidIsoDate(targetRaw)) {
+      setState(() {
+        _dateError = 'Ngày hoàn thành phải đúng định dạng YYYY-MM-DD.';
+      });
+      return;
+    }
+    if (targetRaw.compareTo(resolvedStart) < 0) {
+      setState(() {
+        _dateError = 'Ngày hoàn thành không được trước ngày bắt đầu.';
+      });
+      return;
+    }
+    if (_dateError != null) {
+      setState(() => _dateError = null);
+    }
 
     final String firstMs = _firstMilestoneController.text.trim();
     final List<GoalMilestoneDraft> allMilestones = <GoalMilestoneDraft>[
       if (firstMs.isNotEmpty)
         GoalMilestoneDraft(
           title: firstMs,
-          dueOnIso: _targetDateController.text.trim(),
+          dueOnIso: targetRaw,
         ),
       ..._milestoneDrafts,
     ];
@@ -111,10 +177,8 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
       userId: userId,
       title: _titleController.text.trim(),
       description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
-      startDateIso: _startDateController.text.trim().isEmpty
-          ? repo.getUserDayClock(userId).businessDateForUtc(refUtc)
-          : _startDateController.text.trim(),
-      targetDateIso: _targetDateController.text.trim(),
+      startDateIso: resolvedStart,
+      targetDateIso: targetRaw,
       milestoneDrafts: allMilestones,
       nowUtc: refUtc,
     );
@@ -175,10 +239,29 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
                     child: TextField(
                       key: const Key('input_create_goal_start_date'),
                       controller: _startDateController,
-                      decoration: const InputDecoration(
+                      onChanged: (_) {
+                        if (_dateError != null) {
+                          setState(() => _dateError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
                         labelText: 'Ngày bắt đầu *',
                         hintText: 'YYYY-MM-DD',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          tooltip: 'Chọn ngày bắt đầu',
+                          icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                          onPressed: () async {
+                            await _pickIsoDateInto(
+                              context: context,
+                              controller: _startDateController,
+                              fallbackDate: ref.read(referenceUtcProvider),
+                            );
+                            if (mounted && _dateError != null) {
+                              setState(() => _dateError = null);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -187,15 +270,45 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
                     child: TextField(
                       key: const Key('input_create_goal_target_date'),
                       controller: _targetDateController,
-                      decoration: const InputDecoration(
+                      onChanged: (_) {
+                        if (_dateError != null) {
+                          setState(() => _dateError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
                         labelText: 'Ngày hoàn thành *',
                         hintText: 'YYYY-MM-DD',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          tooltip: 'Chọn ngày hoàn thành',
+                          icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                          onPressed: () async {
+                            await _pickIsoDateInto(
+                              context: context,
+                              controller: _targetDateController,
+                              fallbackDate: ref.read(referenceUtcProvider),
+                            );
+                            if (mounted && _dateError != null) {
+                              setState(() => _dateError = null);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
+              if (_dateError != null) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  _dateError!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: tokens.danger,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Phần Cột mốc: "mục tiêu dài hạn phải có thêm cột mốc"
@@ -305,11 +418,25 @@ class _CreateGoalSheetState extends ConsumerState<CreateGoalSheet> {
                           child: TextField(
                             key: const Key('input_create_goal_extra_milestone_due'),
                             controller: _extraMilestoneDueController,
-                            decoration: const InputDecoration(
+                            onChanged: (_) {
+                              if (_dateError != null) {
+                                setState(() => _dateError = null);
+                              }
+                            },
+                            decoration: InputDecoration(
                               labelText: 'Hạn (tùy chọn)',
                               hintText: 'YYYY-MM-DD',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                               isDense: true,
+                              suffixIcon: IconButton(
+                                tooltip: 'Chọn hạn cột mốc',
+                                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                                onPressed: () => _pickIsoDateInto(
+                                  context: context,
+                                  controller: _extraMilestoneDueController,
+                                  fallbackDate: ref.read(referenceUtcProvider),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -370,6 +497,7 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
 
   final FocusNode _titleFocus = FocusNode();
   String? _titleError;
+  String? _dateError;
 
   @override
   void initState() {
@@ -453,6 +581,30 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
       return;
     }
 
+    final String startIso = _startDateController.text.trim();
+    final String targetIso = _targetDateController.text.trim();
+    if (!_isValidIsoDate(startIso)) {
+      setState(() {
+        _dateError = 'Ngày bắt đầu phải đúng định dạng YYYY-MM-DD.';
+      });
+      return;
+    }
+    if (!_isValidIsoDate(targetIso)) {
+      setState(() {
+        _dateError = 'Ngày hoàn thành phải đúng định dạng YYYY-MM-DD.';
+      });
+      return;
+    }
+    if (targetIso.compareTo(startIso) < 0) {
+      setState(() {
+        _dateError = 'Ngày hoàn thành không được trước ngày bắt đầu.';
+      });
+      return;
+    }
+    if (_dateError != null) {
+      setState(() => _dateError = null);
+    }
+
     final String userId = ref.read(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
 
@@ -462,8 +614,8 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
       title: title,
       description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
       category: widget.goal.payload['category'] as String?,
-      startDateIso: _startDateController.text.trim(),
-      targetDateIso: _targetDateController.text.trim(),
+      startDateIso: startIso,
+      targetDateIso: targetIso,
       status: _status,
       nowUtc: ref.read(referenceUtcProvider),
     );
@@ -474,64 +626,25 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
   }
 
   Future<void> _editMilestoneDialog(LocalEntityRow ms) async {
-    final TextEditingController titleCtrl = TextEditingController(
-      text: (ms.payload['title'] as String?) ?? '',
-    );
-    final TextEditingController dueCtrl = TextEditingController(
-      text: (ms.payload['dueOn'] as String?) ?? '',
-    );
-    final bool? saved = await showDialog<bool>(
+    final ({String title, String dueOn})? result =
+        await showDialog<({String title, String dueOn})>(
       context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Sửa cột mốc'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tên cột mốc *',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: dueCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Hạn hoàn thành (tùy chọn)',
-                hintText: 'YYYY-MM-DD',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(ViStrings.cancelAction),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.trim().isEmpty) return;
-              Navigator.of(ctx).pop(true);
-            },
-            child: const Text(ViStrings.saveAction),
-          ),
-        ],
+      builder: (BuildContext ctx) => _EditMilestoneDialog(
+        initialTitle: (ms.payload['title'] as String?) ?? '',
+        initialDueOn: (ms.payload['dueOn'] as String?) ?? '',
+        fallbackDate: ref.read(referenceUtcProvider),
       ),
     );
-    if (saved == true && mounted) {
+    if (result != null && mounted) {
       final String userId = ref.read(currentUserIdProvider);
       ref.read(localRepositoryProvider).knowledge.updateMilestone(
             userId: userId,
             milestoneId: ms.id,
-            title: titleCtrl.text,
-            dueOnIso: dueCtrl.text,
+            title: result.title,
+            dueOnIso: result.dueOn,
             nowUtc: ref.read(referenceUtcProvider),
           );
     }
-    titleCtrl.dispose();
-    dueCtrl.dispose();
   }
 
   @override
@@ -620,10 +733,29 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
                     child: TextField(
                       key: const Key('input_edit_goal_start_date'),
                       controller: _startDateController,
-                      decoration: const InputDecoration(
+                      onChanged: (_) {
+                        if (_dateError != null) {
+                          setState(() => _dateError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
                         labelText: 'Ngày bắt đầu *',
                         hintText: 'YYYY-MM-DD',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          tooltip: 'Chọn ngày bắt đầu',
+                          icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                          onPressed: () async {
+                            await _pickIsoDateInto(
+                              context: context,
+                              controller: _startDateController,
+                              fallbackDate: ref.read(referenceUtcProvider),
+                            );
+                            if (mounted && _dateError != null) {
+                              setState(() => _dateError = null);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -632,15 +764,45 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
                     child: TextField(
                       key: const Key('input_edit_goal_target_date'),
                       controller: _targetDateController,
-                      decoration: const InputDecoration(
+                      onChanged: (_) {
+                        if (_dateError != null) {
+                          setState(() => _dateError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
                         labelText: 'Ngày hoàn thành *',
                         hintText: 'YYYY-MM-DD',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          tooltip: 'Chọn ngày hoàn thành',
+                          icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                          onPressed: () async {
+                            await _pickIsoDateInto(
+                              context: context,
+                              controller: _targetDateController,
+                              fallbackDate: ref.read(referenceUtcProvider),
+                            );
+                            if (mounted && _dateError != null) {
+                              setState(() => _dateError = null);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
+              if (_dateError != null) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  _dateError!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: tokens.danger,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
 
               // Status Segmented Button
@@ -785,11 +947,25 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
                     child: TextField(
                       key: const Key('input_edit_goal_new_milestone_due'),
                       controller: _newMilestoneDueController,
-                      decoration: const InputDecoration(
+                      onChanged: (_) {
+                        if (_dateError != null) {
+                          setState(() => _dateError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
                         labelText: 'Hạn (tùy chọn)',
                         hintText: 'YYYY-MM-DD',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                         isDense: true,
+                        suffixIcon: IconButton(
+                          tooltip: 'Chọn hạn cột mốc',
+                          icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                          onPressed: () => _pickIsoDateInto(
+                            context: context,
+                            controller: _newMilestoneDueController,
+                            fallbackDate: ref.read(referenceUtcProvider),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -801,11 +977,21 @@ class _GoalEditorSheetState extends ConsumerState<GoalEditorSheet> {
                     onPressed: () {
                       final String t = _newMilestoneTitleController.text.trim();
                       if (t.isEmpty) return;
+                      final String dueRaw = _newMilestoneDueController.text.trim();
+                      if (dueRaw.isNotEmpty && !_isValidIsoDate(dueRaw)) {
+                        setState(() {
+                          _dateError = 'Hạn cột mốc phải đúng định dạng YYYY-MM-DD.';
+                        });
+                        return;
+                      }
+                      if (_dateError != null) {
+                        setState(() => _dateError = null);
+                      }
                       repo.knowledge.addMilestone(
                         userId: userId,
                         goalId: widget.goal.id,
                         title: t,
-                        dueOnIso: _newMilestoneDueController.text.trim(),
+                        dueOnIso: dueRaw,
                         nowUtc: ref.read(referenceUtcProvider),
                       );
                       _newMilestoneTitleController.clear();
@@ -859,67 +1045,26 @@ class _GoalMilestonesSheetState extends ConsumerState<GoalMilestonesSheet> {
   }
 
   Future<void> _editMilestoneDialog(LocalEntityRow ms) async {
-    final TextEditingController titleCtrl = TextEditingController(
-      text: (ms.payload['title'] as String?) ?? '',
-    );
-    final TextEditingController dueCtrl = TextEditingController(
-      text: (ms.payload['dueOn'] as String?) ?? '',
-    );
-    final bool? saved = await showDialog<bool>(
+    final ({String title, String dueOn})? result =
+        await showDialog<({String title, String dueOn})>(
       context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Sửa cột mốc'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              key: const Key('input_edit_milestone_title'),
-              controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tên cột mốc *',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('input_edit_milestone_due'),
-              controller: dueCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Hạn hoàn thành (tùy chọn)',
-                hintText: 'YYYY-MM-DD',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(ViStrings.cancelAction),
-          ),
-          FilledButton(
-            key: const Key('btn_confirm_edit_milestone'),
-            onPressed: () {
-              if (titleCtrl.text.trim().isEmpty) return;
-              Navigator.of(ctx).pop(true);
-            },
-            child: const Text(ViStrings.saveAction),
-          ),
-        ],
+      builder: (BuildContext ctx) => _EditMilestoneDialog(
+        initialTitle: (ms.payload['title'] as String?) ?? '',
+        initialDueOn: (ms.payload['dueOn'] as String?) ?? '',
+        fallbackDate: ref.read(referenceUtcProvider),
+        withKeys: true,
       ),
     );
-    if (saved == true && mounted) {
+    if (result != null && mounted) {
       final String userId = ref.read(currentUserIdProvider);
       ref.read(localRepositoryProvider).knowledge.updateMilestone(
             userId: userId,
             milestoneId: ms.id,
-            title: titleCtrl.text,
-            dueOnIso: dueCtrl.text,
+            title: result.title,
+            dueOnIso: result.dueOn,
             nowUtc: ref.read(referenceUtcProvider),
           );
     }
-    titleCtrl.dispose();
-    dueCtrl.dispose();
   }
 
   @override
@@ -1036,10 +1181,19 @@ class _GoalMilestonesSheetState extends ConsumerState<GoalMilestonesSheet> {
             TextField(
               key: const Key('input_new_milestone_due'),
               controller: _newDueController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Ngày hạn (tùy chọn)',
                 hintText: 'YYYY-MM-DD',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: 'Chọn ngày hạn',
+                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                  onPressed: () => _pickIsoDateInto(
+                    context: context,
+                    controller: _newDueController,
+                    fallbackDate: ref.read(referenceUtcProvider),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -1050,11 +1204,20 @@ class _GoalMilestonesSheetState extends ConsumerState<GoalMilestonesSheet> {
               ),
               onPressed: () {
                 if (_newTitleController.text.trim().isEmpty) return;
+                final String dueRaw = _newDueController.text.trim();
+                if (dueRaw.isNotEmpty && !_isValidIsoDate(dueRaw)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Ngày hạn cột mốc phải đúng định dạng YYYY-MM-DD.'),
+                    ),
+                  );
+                  return;
+                }
                 repo.knowledge.addMilestone(
                   userId: userId,
                   goalId: widget.goal.id,
                   title: _newTitleController.text,
-                  dueOnIso: _newDueController.text,
+                  dueOnIso: dueRaw,
                   nowUtc: ref.read(referenceUtcProvider),
                 );
                 _newTitleController.clear();
@@ -1067,6 +1230,107 @@ class _GoalMilestonesSheetState extends ConsumerState<GoalMilestonesSheet> {
         ),
       ),
       ),
+    );
+  }
+}
+
+class _EditMilestoneDialog extends StatefulWidget {
+  const _EditMilestoneDialog({
+    required this.initialTitle,
+    required this.initialDueOn,
+    required this.fallbackDate,
+    this.withKeys = false,
+  });
+
+  final String initialTitle;
+  final String initialDueOn;
+  final DateTime fallbackDate;
+  final bool withKeys;
+
+  @override
+  State<_EditMilestoneDialog> createState() => _EditMilestoneDialogState();
+}
+
+class _EditMilestoneDialogState extends State<_EditMilestoneDialog> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _dueCtrl;
+  String? _dueError;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.initialTitle);
+    _dueCtrl = TextEditingController(text: widget.initialDueOn);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _dueCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Sửa cột mốc'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TextField(
+            key: widget.withKeys ? const Key('input_edit_milestone_title') : null,
+            controller: _titleCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Tên cột mốc *',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: widget.withKeys ? const Key('input_edit_milestone_due') : null,
+            controller: _dueCtrl,
+            onChanged: (_) {
+              if (_dueError != null) setState(() => _dueError = null);
+            },
+            decoration: InputDecoration(
+              labelText: 'Hạn hoàn thành (tùy chọn)',
+              hintText: 'YYYY-MM-DD',
+              border: const OutlineInputBorder(),
+              errorText: _dueError,
+              suffixIcon: IconButton(
+                tooltip: 'Chọn ngày',
+                icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                onPressed: () => _pickIsoDateInto(
+                  context: context,
+                  controller: _dueCtrl,
+                  fallbackDate: widget.fallbackDate,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(ViStrings.cancelAction),
+        ),
+        FilledButton(
+          key: widget.withKeys ? const Key('btn_confirm_edit_milestone') : null,
+          onPressed: () {
+            if (_titleCtrl.text.trim().isEmpty) return;
+            final String dueRaw = _dueCtrl.text.trim();
+            if (dueRaw.isNotEmpty && !_isValidIsoDate(dueRaw)) {
+              setState(() {
+                _dueError = 'Ngày hạn phải đúng định dạng YYYY-MM-DD.';
+              });
+              return;
+            }
+            Navigator.of(context).pop((title: _titleCtrl.text, dueOn: dueRaw));
+          },
+          child: const Text(ViStrings.saveAction),
+        ),
+      ],
     );
   }
 }

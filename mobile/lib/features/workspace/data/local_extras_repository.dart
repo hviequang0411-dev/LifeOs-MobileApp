@@ -2,12 +2,38 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/local_extras_database.dart';
+import '../../../core/providers/app_providers.dart';
 
 export '../../../core/database/local_extras_database.dart';
 
+/// Bật mở tệp SQLite cục bộ theo từng người dùng trong app thật (`main.dart`).
+/// Mặc định `false` để các bài kiểm thử dùng kho trong bộ nhớ cô lập.
+final Provider<bool> usePersistentLocalExtrasProvider =
+    Provider<bool>((Ref ref) => false);
+
+/// Thư mục lưu tệp SQLite cục bộ trên nền tảng Native (Mobile/Desktop).
+final Provider<String?> localStorageBaseDirProvider =
+    Provider<String?>((Ref ref) => null);
+
 final Provider<LifeOsLocalExtrasDatabase> localExtrasDatabaseProvider =
     Provider<LifeOsLocalExtrasDatabase>((Ref ref) {
-  final LifeOsLocalExtrasDatabase db = LifeOsLocalExtrasDatabase.inMemory();
+  final bool persistent = ref.watch(usePersistentLocalExtrasProvider);
+  final String userId = ref.watch(currentUserIdProvider);
+  final String? baseDir = ref.watch(localStorageBaseDirProvider);
+
+  late final LifeOsLocalExtrasDatabase db;
+  if (persistent) {
+    try {
+      db = LifeOsLocalExtrasDatabase.openForUser(
+        userId,
+        baseDirectory: baseDir,
+      );
+    } catch (_) {
+      db = LifeOsLocalExtrasDatabase.inMemory();
+    }
+  } else {
+    db = LifeOsLocalExtrasDatabase.inMemory();
+  }
   ref.onDispose(db.close);
   return db;
 });
@@ -54,6 +80,12 @@ class LocalExtrasRepository {
   int getPlantedTreesCount() {
     return _db.getPlantedTreesCount();
   }
+
+  String? getPref(String key) => _db.getPref(key);
+
+  void setPref(String key, String value) => _db.setPref(key, value);
+
+  void deletePref(String key) => _db.deletePref(key);
 
   void clearAll() {
     _db.clearAll();

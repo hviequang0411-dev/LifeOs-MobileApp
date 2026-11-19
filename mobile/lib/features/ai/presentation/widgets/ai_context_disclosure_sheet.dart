@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/l10n/vi_strings.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
 import '../../data/ai_api.dart';
 import '../../data/ai_models.dart';
 import '../../data/ai_providers.dart';
 
-/// Bảng minh bạch ngữ cảnh "AI đã đọc gì?" theo AWP-3.
+/// Bảng minh bạch ngữ cảnh "AI đã đọc gì?".
 /// Hiển thị trung thực snapshot payload dữ liệu đã gửi tới nhà cung cấp mô hình sau redaction.
 class AiContextDisclosureSheet extends ConsumerWidget {
   const AiContextDisclosureSheet({
@@ -17,18 +19,26 @@ class AiContextDisclosureSheet extends ConsumerWidget {
 
   final String messageId;
 
+  String _domainLabelVi(String code) {
+    final String upper = code.trim().toUpperCase();
+    for (final AiContextDomain domain in AiContextDomain.values) {
+      if (domain.code == upper) return domain.labelVi;
+    }
+    return code;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final LifeOsTokens tokens = LifeOsTokens.of(context);
     final AiApiClient api = ref.watch(aiApiClientProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.bgSurface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(LifeOsTokens.radiusLg),
-        ),
+    return Material(
+      color: tokens.bgSurface,
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(LifeOsTokens.radiusLg),
       ),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.85,
       ),
@@ -63,7 +73,7 @@ class AiContextDisclosureSheet extends ConsumerWidget {
                         ),
                       ),
                       Text(
-                        'Minh bạch ngữ cảnh dữ liệu cá nhân đã gửi (AWP-3)',
+                        'Minh bạch ngữ cảnh dữ liệu cá nhân đã gửi',
                         style: TextStyle(
                           fontSize: 12,
                           color: tokens.textSecondary,
@@ -97,11 +107,15 @@ class AiContextDisclosureSheet extends ConsumerWidget {
                 }
 
                 if (snapshot.hasError) {
+                  final Object? err = snapshot.error;
+                  final AiErrorDescriptor mapped = ViStrings.mapAiError(
+                    err is LifeOsApiException ? err.errorCode : null,
+                  );
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(LifeOsTokens.space4),
                       child: LifeOsErrorBanner(
-                        message: 'Không thể tải ngữ cảnh tin nhắn: ${snapshot.error}',
+                        message: mapped.message,
                       ),
                     ),
                   );
@@ -152,7 +166,7 @@ class AiContextDisclosureSheet extends ConsumerWidget {
                               return Chip(
                                 visualDensity: VisualDensity.compact,
                                 label: Text(
-                                  d,
+                                  _domainLabelVi(d),
                                   style: const TextStyle(fontSize: 11),
                                 ),
                               );
@@ -206,7 +220,7 @@ class AiContextDisclosureSheet extends ConsumerWidget {
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
-                                      entity.domain,
+                                      _domainLabelVi(entity.domain),
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
@@ -277,6 +291,7 @@ class AiContextDisclosureSheet extends ConsumerWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

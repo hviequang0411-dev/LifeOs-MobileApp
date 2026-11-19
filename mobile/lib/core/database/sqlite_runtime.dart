@@ -30,6 +30,9 @@ CommonDatabase openUserExtrasRawDatabase(
 }) =>
     impl.openUserExtrasRawDatabase(userId, baseDirectory: baseDirectory);
 
-void deleteLocalDatabaseFiles(String userId) =>
-    impl.deleteLocalDatabaseFiles(userId);
+void deleteLocalDatabaseFiles(
+  String userId, {
+  String? baseDirectory,
+}) =>
+    impl.deleteLocalDatabaseFiles(userId, baseDirectory: baseDirectory);
 

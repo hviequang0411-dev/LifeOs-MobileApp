@@ -362,32 +362,73 @@ class FinanceLocalRepository {
     }
 
     final String id = recurringId ?? _uuid.v4();
-    final bool isUpdate = recurringId != null &&
-        db.getEntity(
-              userId: userId,
-              entityType: SyncEntityType.recurringTransaction,
-              entityId: recurringId,
-            ) !=
-            null;
+    final LocalEntityRow? existing = recurringId != null
+        ? db.getEntity(
+            userId: userId,
+            entityType: SyncEntityType.recurringTransaction,
+            entityId: recurringId,
+          )
+        : null;
+    final bool isUpdate = existing != null;
+
+    final LocalEntityRow? targetAcc = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: accountId,
+    );
+    final String normalizedStatus =
+        status.trim().toUpperCase() == 'PAUSED' ? 'PAUSED' : 'ACTIVE';
+    if (targetAcc != null) {
+      final bool accArchived = targetAcc.payload['archived'] == true ||
+          targetAcc.payload['archivedAt'] != null;
+      if (normalizedStatus == 'ACTIVE' && accArchived) {
+        throw StateError('FINANCE_ACCOUNT_ARCHIVED');
+      }
+      final String targetCurrency =
+          ((targetAcc.payload['currency'] as String?) ?? 'VND').toUpperCase();
+      if (existing != null) {
+        final LocalEntityRow? prevAcc = db.getEntity(
+          userId: userId,
+          entityType: SyncEntityType.financeAccount,
+          entityId: (existing.payload['accountId'] as String?) ?? accountId,
+        );
+        final String prevCurrency = ((existing.payload['currency'] as String?) ??
+                (prevAcc?.payload['currency'] as String?) ??
+                targetCurrency)
+            .toUpperCase();
+        if (targetCurrency != prevCurrency) {
+          throw StateError('FINANCE_CURRENCY_MISMATCH');
+        }
+      }
+    }
+
+    final Map<String, dynamic> payload = <String, dynamic>{
+      if (existing != null) ...existing.payload,
+      'id': id,
+      'accountId': accountId,
+      'categoryId': categoryId,
+      'kind': normalizedKind,
+      'amount': amount.abs().toJsonString(),
+      if (targetAcc != null)
+        'currency':
+            ((targetAcc.payload['currency'] as String?) ?? 'VND').toUpperCase(),
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      'frequency': normalizedFreq,
+      'intervalCount': intervalCount,
+      'startOn': startOnIso,
+      'endOn': endOnIso,
+      'status': normalizedStatus,
+    };
+    if (note != null && note.trim().isEmpty) {
+      payload.remove('note');
+    }
 
     db.mutateLocalAndEnqueueOutbox(
       userId: userId,
       entityType: SyncEntityType.recurringTransaction,
       entityId: id,
       op: isUpdate ? 'UPDATE' : 'CREATE',
-      payload: <String, dynamic>{
-        'id': id,
-        'accountId': accountId,
-        'categoryId': categoryId,
-        'kind': normalizedKind,
-        'amount': amount.abs().toJsonString(),
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-        'frequency': normalizedFreq,
-        'intervalCount': intervalCount,
-        'startOn': startOnIso,
-        'endOn': endOnIso,
-        'status': status.trim().toUpperCase() == 'PAUSED' ? 'PAUSED' : 'ACTIVE',
-      },
+      payload: payload,
       nowUtc: nowUtc,
     );
     return id;
@@ -552,6 +593,381 @@ class FinanceLocalRepository {
       }
     }
     return Decimal10k.fromScaled(sumScaled);
+  }
+
+  /// Cập nhật ví/tài khoản (`financial_account`).
+  /// Tuân thủ F6 (`BACKEND_FIX_REPORT.md`): khi lưu trữ ví, tự động tạm dừng các định kỳ `ACTIVE`
+  /// trỏ tới ví này mà giữ nguyên `nextRunOn`.
+  void updateFinanceAccount({
+    required String userId,
+    required String accountId,
+    required String name,
+    String? accountType,
+    String? currency,
+    bool? archived,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: accountId,
+    );
+    if (existing == null) return;
+    final String currentCurrency =
+        ((existing.payload['currency'] as String?) ?? 'VND').toUpperCase();
+    final String nextCurrency =
+        (currency ?? currentCurrency).trim().toUpperCase();
+
+    if (nextCurrency != currentCurrency) {
+      final bool hasActivity = db
+              .listEntities(
+                userId: userId,
+                entityType: SyncEntityType.financeTransaction,
+              )
+              .any((LocalEntityRow r) => r.payload['accountId'] == accountId) ||
+          db
+              .listEntities(
+                userId: userId,
+                entityType: SyncEntityType.accountTransfer,
+              )
+              .any(
+                (LocalEntityRow r) =>
+                    r.payload['fromAccountId'] == accountId ||
+                    r.payload['toAccountId'] == accountId,
+              ) ||
+          db
+              .listEntities(
+                userId: userId,
+                entityType: SyncEntityType.recurringTransaction,
+              )
+              .any((LocalEntityRow r) => r.payload['accountId'] == accountId);
+      if (hasActivity) {
+        throw StateError('FINANCE_CURRENCY_LOCKED');
+      }
+    }
+
+    final DateTime ts = nowUtc ?? DateTime.now().toUtc();
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['id'] = accountId;
+    next['name'] = name.trim();
+    if (accountType != null && accountType.trim().isNotEmpty) {
+      next['accountType'] = accountType.trim().toUpperCase();
+    }
+    next['currency'] = nextCurrency;
+    if (archived != null) {
+      next['archived'] = archived;
+      next['archivedAt'] = archived ? ts.toIso8601String() : null;
+    }
+
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: accountId,
+      op: 'UPDATE',
+      payload: next,
+      nowUtc: ts,
+    );
+
+    if (archived == true) {
+      for (final LocalEntityRow rec in db.listEntities(
+        userId: userId,
+        entityType: SyncEntityType.recurringTransaction,
+      )) {
+        if (rec.payload['accountId'] == accountId &&
+            (rec.payload['status'] as String?)?.toUpperCase() == 'ACTIVE') {
+          db.mutateLocalAndEnqueueOutbox(
+            userId: userId,
+            entityType: SyncEntityType.recurringTransaction,
+            entityId: rec.id,
+            op: 'UPDATE',
+            payload: <String, dynamic>{
+              ...rec.payload,
+              'id': rec.id,
+              'status': 'PAUSED',
+            },
+            nowUtc: ts,
+          );
+        }
+      }
+    }
+  }
+
+  /// Xóa mềm tài khoản nếu chưa từng phát sinh giao dịch/chuyển khoản/định kỳ.
+  void deleteFinanceAccount({
+    required String userId,
+    required String accountId,
+    DateTime? nowUtc,
+  }) {
+    final bool hasActivity = db
+            .listEntities(
+              userId: userId,
+              entityType: SyncEntityType.financeTransaction,
+            )
+            .any((LocalEntityRow r) => r.payload['accountId'] == accountId) ||
+        db
+            .listEntities(
+              userId: userId,
+              entityType: SyncEntityType.accountTransfer,
+            )
+            .any(
+              (LocalEntityRow r) =>
+                  r.payload['fromAccountId'] == accountId ||
+                  r.payload['toAccountId'] == accountId,
+            ) ||
+        db
+            .listEntities(
+              userId: userId,
+              entityType: SyncEntityType.recurringTransaction,
+            )
+            .any((LocalEntityRow r) => r.payload['accountId'] == accountId);
+    if (hasActivity) {
+      throw StateError('FINANCE_ACCOUNT_HAS_TRANSACTIONS');
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: accountId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Cập nhật giao dịch (`financial_transaction`), kiểm tra F1 (`FINANCE_CURRENCY_MISMATCH`)
+  /// khi đổi sang ví khác tiền tệ và kiểm tra tài khoản lưu trữ / loại danh mục.
+  void updateFinanceTransaction({
+    required String userId,
+    required String transactionId,
+    String? accountId,
+    String? categoryId,
+    bool clearCategory = false,
+    String? kind,
+    Decimal10k? amount,
+    String? occurredOnIso,
+    String? note,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.financeTransaction,
+      entityId: transactionId,
+    );
+    if (existing == null) return;
+
+    final String nextKind = (kind ??
+            existing.payload['kind'] as String? ??
+            existing.payload['type'] as String? ??
+            'EXPENSE')
+        .trim()
+        .toUpperCase();
+    final String effectiveAccountId =
+        accountId ?? (existing.payload['accountId'] as String? ?? '');
+
+    final LocalEntityRow? oldAcc = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: (existing.payload['accountId'] as String?) ?? '',
+    );
+    final String oldCurrency = ((existing.payload['currency'] as String?) ??
+            (oldAcc?.payload['currency'] as String?) ??
+            'VND')
+        .toUpperCase();
+
+    final LocalEntityRow? targetAcc = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.financeAccount,
+      entityId: effectiveAccountId,
+    );
+    if (targetAcc != null) {
+      if (targetAcc.payload['archived'] == true ||
+          targetAcc.payload['archivedAt'] != null) {
+        throw StateError('FINANCE_ACCOUNT_ARCHIVED');
+      }
+      final String targetCurrency =
+          ((targetAcc.payload['currency'] as String?) ?? 'VND').toUpperCase();
+      if (targetCurrency != oldCurrency) {
+        throw StateError('FINANCE_CURRENCY_MISMATCH');
+      }
+    }
+
+    final String? effectiveCategoryId =
+        clearCategory ? null : (categoryId ?? existing.payload['categoryId'] as String?);
+    if (effectiveCategoryId != null && effectiveCategoryId.isNotEmpty) {
+      final LocalEntityRow? cat = db.getEntity(
+        userId: userId,
+        entityType: SyncEntityType.financeCategory,
+        entityId: effectiveCategoryId,
+      );
+      if (cat != null) {
+        final String? catKind = (cat.payload['kind'] as String?)?.toUpperCase();
+        if (catKind != null && catKind.isNotEmpty && catKind != nextKind) {
+          throw StateError('FINANCE_CATEGORY_KIND_MISMATCH');
+        }
+      }
+    }
+
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['id'] = transactionId;
+    next['accountId'] = effectiveAccountId;
+    next['categoryId'] = effectiveCategoryId;
+    next['kind'] = nextKind;
+    next['currency'] = oldCurrency;
+    if (amount != null) {
+      next['amount'] = amount.abs().toJsonString();
+    }
+    if (occurredOnIso != null && occurredOnIso.trim().isNotEmpty) {
+      next['occurredOn'] = occurredOnIso.trim();
+    }
+    if (note != null) {
+      if (note.trim().isEmpty) {
+        next.remove('note');
+      } else {
+        next['note'] = note.trim();
+      }
+    }
+
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.financeTransaction,
+      entityId: transactionId,
+      op: 'UPDATE',
+      payload: next,
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm giao dịch thu/chi.
+  void deleteFinanceTransaction({
+    required String userId,
+    required String transactionId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.financeTransaction,
+      entityId: transactionId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm giao dịch chuyển tiền nội bộ giữa các ví.
+  void deleteAccountTransfer({
+    required String userId,
+    required String transferId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.accountTransfer,
+      entityId: transferId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Cập nhật hạn mức ngân sách (`budget`).
+  void updateBudget({
+    required String userId,
+    required String budgetId,
+    required Decimal10k amount,
+    String? categoryId,
+    bool? archived,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.budget,
+      entityId: budgetId,
+    );
+    if (existing == null) return;
+    final DateTime ts = nowUtc ?? DateTime.now().toUtc();
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['id'] = budgetId;
+    next['amount'] = amount.abs().toJsonString();
+    if (categoryId != null) {
+      next['categoryId'] = categoryId;
+    }
+    if (archived != null) {
+      next['archived'] = archived;
+      next['archivedAt'] = archived ? ts.toIso8601String() : null;
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.budget,
+      entityId: budgetId,
+      op: 'UPDATE',
+      payload: next,
+      nowUtc: ts,
+    );
+  }
+
+  /// Xóa mềm ngân sách.
+  void deleteBudget({
+    required String userId,
+    required String budgetId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.budget,
+      entityId: budgetId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm mục tiêu tiết kiệm (`saving_goal`) và các khoản góp liên quan.
+  void deleteSavingGoal({
+    required String userId,
+    required String goalId,
+    DateTime? nowUtc,
+  }) {
+    for (final LocalEntityRow c in db.listEntities(
+      userId: userId,
+      entityType: SyncEntityType.savingContribution,
+    )) {
+      if (c.payload['goalId'] == goalId) {
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.savingContribution,
+          entityId: c.id,
+          op: 'DELETE',
+          payload: const <String, dynamic>{},
+          nowUtc: nowUtc,
+        );
+      }
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.savingGoal,
+      entityId: goalId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm giao dịch định kỳ (`recurring_transaction`).
+  void deleteRecurringTransaction({
+    required String userId,
+    required String recurringId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.recurringTransaction,
+      entityId: recurringId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
   }
 }
 

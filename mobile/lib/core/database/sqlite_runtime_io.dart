@@ -55,13 +55,17 @@ CommonDatabase openUserExtrasRawDatabase(
   return sql.sqlite3.open(filePath);
 }
 
-void deleteLocalDatabaseFiles(String userId) {
+void deleteLocalDatabaseFiles(
+  String userId, {
+  String? baseDirectory,
+}) {
+  final String dirPath = baseDirectory ?? Directory.current.path;
   for (final String fileName in <String>[
     'lifeos_$userId.sqlite',
     'lifeos_local_extras_$userId.sqlite',
   ]) {
     try {
-      final File f = File('${Directory.current.path}/$fileName');
+      final File f = File('$dirPath/$fileName');
       if (f.existsSync()) {
         f.deleteSync();
       }

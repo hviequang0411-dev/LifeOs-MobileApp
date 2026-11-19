@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_tokens.dart';
+import '../../../../core/time/user_day_clock.dart';
 
 /// Widget Bản đồ nhiệt thói quen (Habit Contribution Heatmap)
 class HabitHeatmapWidget extends StatelessWidget {
@@ -8,16 +9,20 @@ class HabitHeatmapWidget extends StatelessWidget {
     required this.streakDays,
     required this.completionMatrix, // Map<String, int> dateKey ('yyyy-MM-dd') -> count of completed habits
     this.weeks = 8,
+    this.referenceDateIso,
   });
 
   final int streakDays;
   final Map<String, int> completionMatrix;
   final int weeks;
+  final String? referenceDateIso;
 
   @override
   Widget build(BuildContext context) {
     final LifeOsTokens tokens = LifeOsTokens.of(context);
-    final DateTime now = DateTime.now();
+    final DateTime now = referenceDateIso != null
+        ? UserDayClock.parseIsoDateUtc(referenceDateIso!)
+        : DateTime.now().toUtc();
 
     return Semantics(
       label: 'Bản đồ nhiệt thói quen: Chuỗi duy trì hiện tại $streakDays ngày',

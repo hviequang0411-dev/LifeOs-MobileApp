@@ -9,6 +9,8 @@ class TimelineEntryItem {
     required this.kind, // 'EVENT' | 'TIME_BLOCK' | 'TASK'
     required this.isDone,
     this.durationMinutes,
+    this.entityId,
+    this.occurrenceStartLocal,
   });
 
   final String id;
@@ -17,6 +19,8 @@ class TimelineEntryItem {
   final String kind;
   final bool isDone;
   final int? durationMinutes;
+  final String? entityId;
+  final String? occurrenceStartLocal;
 }
 
 /// Widget Dòng thời gian ngày kết hợp (Integrated Daily Timeline)
@@ -24,9 +28,11 @@ class DailyTimelineWidget extends StatelessWidget {
   const DailyTimelineWidget({
     super.key,
     required this.items,
+    this.onItemTap,
   });
 
   final List<TimelineEntryItem> items;
+  final void Function(TimelineEntryItem item)? onItemTap;
 
   @override
   Widget build(BuildContext context) {
@@ -165,36 +171,47 @@ class DailyTimelineWidget extends StatelessWidget {
                     const SizedBox(width: 10),
                     // Thẻ nội dung
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: tokens.bgElevated,
-                          borderRadius: BorderRadius.circular(LifeOsTokens.radiusMd),
-                          border: Border.all(color: tokens.borderSubtle),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              item.title,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: tokens.textPrimary,
-                                decoration: item.isDone ? TextDecoration.lineThrough : null,
-                              ),
-                            ),
-                            if (item.durationMinutes != null) ...<Widget>[
-                              const SizedBox(height: 2),
+                      child: InkWell(
+                        borderRadius:
+                            BorderRadius.circular(LifeOsTokens.radiusMd),
+                        onTap: onItemTap != null ? () => onItemTap!(item) : null,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.bgElevated,
+                            borderRadius:
+                                BorderRadius.circular(LifeOsTokens.radiusMd),
+                            border: Border.all(color: tokens.borderSubtle),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
                               Text(
-                                '${item.durationMinutes} phút tập trung',
+                                item.title,
                                 style: TextStyle(
-                                  fontSize: 11,
-                                  color: tokens.textMuted,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: tokens.textPrimary,
+                                  decoration: item.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
                                 ),
                               ),
+                              if (item.durationMinutes != null) ...<Widget>[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${item.durationMinutes} phút tập trung',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: tokens.textMuted,
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),

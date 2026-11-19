@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/l10n/vi_strings.dart';
 import '../../../core/money/decimal10k.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/sync/entity_types.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -12,6 +14,7 @@ import '../../../core/widgets/lifeos_visual_charts.dart';
 import '../../../core/widgets/lifeos_widgets.dart';
 import '../../workspace/data/lifeos_local_repository.dart';
 import 'widgets/budget_pace_gauge.dart';
+import 'widgets/finance_forms_sheets.dart';
 import 'widgets/recurring_and_saving_section.dart';
 import '../../ai/data/ai_api.dart';
 import '../../ai/data/ai_models.dart';
@@ -21,11 +24,18 @@ import '../../ai/presentation/widgets/ai_plans_and_insights_sheets.dart';
 
 /// Tab 2: Màn hình **Tài chính (`My Finance`)** — Botanical Premium v2
 /// Ví/Tài khoản, Phân bổ chi tiêu Donut, Tốc độ ngân sách, Dòng tiền 7 ngày.
-class FinanceTabView extends ConsumerWidget {
+class FinanceTabView extends ConsumerStatefulWidget {
   const FinanceTabView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FinanceTabView> createState() => _FinanceTabViewState();
+}
+
+class _FinanceTabViewState extends ConsumerState<FinanceTabView> {
+  bool _loadingAiInsight = false;
+
+  @override
+  Widget build(BuildContext context) {
     final String userId = ref.watch(currentUserIdProvider);
     final LifeOsLocalRepository repo = ref.watch(localRepositoryProvider);
     final bool masked = ref.watch(privacyMaskAmountsProvider);
@@ -55,10 +65,15 @@ class FinanceTabView extends ConsumerWidget {
         const <LocalEntityRow>[];
     final String todayIso =
         repo.getUserDayClock(userId).businessDateForUtc(ref.watch(referenceUtcProvider));
+    final String monthPrefix =
+        todayIso.length >= 7 ? todayIso.substring(0, 7) : todayIso;
 
-    // Tính tổng số dư tất cả ví (Decimal10k nguyên)
+    // Tính tổng số dư tất cả ví đang hoạt động (Decimal10k nguyên)
     int totalBalanceScaled = 0;
     for (final LocalEntityRow acc in accounts) {
+      if (acc.payload['archived'] == true || acc.payload['archivedAt'] != null) {
+        continue;
+      }
       final Decimal10k bal = repo.computeAccountBalance(
         userId: userId,
         accountId: acc.id,
@@ -67,7 +82,7 @@ class FinanceTabView extends ConsumerWidget {
     }
     final Decimal10k totalBalance = Decimal10k.fromScaled(totalBalanceScaled);
 
-    // Tính phân bổ chi tiêu danh mục (0 double với tiền)
+    // Tính phân bổ chi tiêu danh mục TRONG THÁNG HIỆN TẠI (0 double với tiền)
     final Map<String, int> categoryAmounts = <String, int>{};
     int totalExpenseScaled = 0;
 
@@ -76,7 +91,10 @@ class FinanceTabView extends ConsumerWidget {
           (tx.payload['kind'] ?? tx.payload['type'] ?? 'EXPENSE')
               .toString()
               .toUpperCase();
-      if (txKind == 'EXPENSE') {
+      final String occurredOn =
+          ((tx.payload['occurredOn'] ?? tx.payload['transactionDate']) as String?) ??
+              '';
+      if (txKind == 'EXPENSE' && occurredOn.startsWith(monthPrefix)) {
         final Object? rawAmt = tx.payload['amount'];
         int scaled = 0;
         if (rawAmt != null) {
@@ -108,6 +126,9 @@ class FinanceTabView extends ConsumerWidget {
     if (budgets.isNotEmpty) {
       int sumBudget = 0;
       for (final LocalEntityRow b in budgets) {
+        if (b.payload['archived'] == true || b.payload['archivedAt'] != null) {
+          continue;
+        }
         final Object? raw = b.payload['amount'];
         if (raw != null) {
           try {
@@ -274,10 +295,12 @@ class FinanceTabView extends ConsumerWidget {
                         side: BorderSide(color: tokens.borderSubtle),
                       ),
                       onPressed: () {
-                        repo.createFinanceAccount(
-                          userId: userId,
-                          name: 'Tài khoản Ngân hàng #${accounts.length + 1}',
-                          openingBalance: Decimal10k.fromWhole(5000000),
+                        showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => const FinanceAccountSheet(),
                         );
                       },
                       icon: const Icon(Icons.add_card_rounded, size: 18),
@@ -291,19 +314,54 @@ class FinanceTabView extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       onPressed: () {
-                        if (accounts.isNotEmpty) {
-                          repo.createFinanceTransaction(
-                            userId: userId,
-                            accountId: accounts.first.id,
-                            kind: 'EXPENSE',
-                            amount: Decimal10k.fromWhole(45000),
-                            occurredOnIso: todayIso,
-                            note: 'Cà phê sáng',
-                          );
-                        }
+                        showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => const FinanceTransactionSheet(),
+                        );
                       },
                       icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                      label: const Text('Ghi chi tiêu'),
+                      label: const Text('Ghi giao dịch'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: LifeOsTokens.space2),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('btn_open_budgets'),
+                      onPressed: () {
+                        showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => const BudgetManagementSheet(),
+                        );
+                      },
+                      icon: const Icon(Icons.pie_chart_outline_rounded, size: 18),
+                      label: const Text('Ngân sách'),
+                    ),
+                  ),
+                  const SizedBox(width: LifeOsTokens.space2),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('btn_open_tx_history'),
+                      onPressed: () {
+                        showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => const TransactionHistorySheet(),
+                        );
+                      },
+                      icon: const Icon(Icons.history_rounded, size: 18),
+                      label: const Text('Lịch sử'),
                     ),
                   ),
                 ],
@@ -314,12 +372,29 @@ class FinanceTabView extends ConsumerWidget {
                   width: double.infinity,
                   child: TextButton.icon(
                     key: const Key('btn_ai_finance_insight'),
-                    onPressed: () => _handleAiFinanceInsight(context, ref),
-                    icon: Icon(Icons.auto_awesome_rounded,
-                        size: 16, color: tokens.domainFinance),
-                    label: Text('Phân tích Tài chính với AI',
-                        style: TextStyle(
-                            fontSize: 12.5, color: tokens.domainFinance)),
+                    onPressed: _loadingAiInsight
+                        ? null
+                        : () => _handleAiFinanceInsight(context),
+                    icon: _loadingAiInsight
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 16,
+                            color: tokens.domainFinance,
+                          ),
+                    label: Text(
+                      _loadingAiInsight
+                          ? 'Đang phân tích tài chính...'
+                          : 'Phân tích Tài chính với AI',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: tokens.domainFinance,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -447,9 +522,22 @@ class FinanceTabView extends ConsumerWidget {
                 _ => ('Khác', Icons.savings_outlined),
               };
 
+              final bool isArchived = acc.payload['archived'] == true ||
+                  acc.payload['archivedAt'] != null;
               return Padding(
                 padding: const EdgeInsets.only(bottom: LifeOsTokens.space2),
-                child: LifeOsCard(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(LifeOsTokens.radiusMd),
+                  onTap: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => FinanceAccountSheet(account: acc),
+                    );
+                  },
+                  child: LifeOsCard(
                   elevation: 1,
                   padding: const EdgeInsets.symmetric(
                     horizontal: LifeOsTokens.space3,
@@ -481,7 +569,7 @@ class FinanceTabView extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              label,
+                              isArchived ? '$label · Đã lưu trữ' : label,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: tokens.textSecondary,
@@ -503,6 +591,7 @@ class FinanceTabView extends ConsumerWidget {
                       ),
                     ],
                   ),
+                ),
                 ),
               );
             }).toList(),
@@ -560,8 +649,7 @@ class FinanceTabView extends ConsumerWidget {
     );
   }
 
-  Future<void> _handleAiFinanceInsight(
-      BuildContext context, WidgetRef ref) async {
+  Future<void> _handleAiFinanceInsight(BuildContext context) async {
     final AiPreferencesResponse prefs =
         ref.read(aiPreferencesProvider).valueOrNull ??
             AiPreferencesResponse.initialDefault();
@@ -585,22 +673,38 @@ class FinanceTabView extends ConsumerWidget {
       return;
     }
 
-    final DateTime now = DateTime.now().toUtc();
-    final String today =
-        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final DateTime start = now.subtract(const Duration(days: 30));
-    final String fromDate =
-        '${start.year.toString().padLeft(4, '0')}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    if (!ref.read(aiIsOnlineProvider)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cần kết nối mạng để dùng AI phân tích tài chính.'),
+        ),
+      );
+      return;
+    }
+
+    if (_loadingAiInsight) return;
+    setState(() => _loadingAiInsight = true);
+
+    final String userId = ref.read(currentUserIdProvider);
+    final LifeOsLocalRepository repo = ref.read(localRepositoryProvider);
+    final String today = repo
+        .getUserDayClock(userId)
+        .businessDateForUtc(ref.read(referenceUtcProvider));
+    final String fromDate = UserDayClock.addDays(today, -29);
+    final String currency =
+        ((repo.getUserSettings(userId)['defaultCurrency'] as String?) ?? 'VND')
+            .trim()
+            .toUpperCase();
     final AiApiClient api = ref.read(aiApiClientProvider);
 
     try {
       final AiInsightResponse res = await api.createFinanceInsight(
         from: fromDate,
         to: today,
-        currency: 'VND',
+        currency: currency.isEmpty ? 'VND' : currency,
         contextDomains: <String>[AiContextDomain.finance.code],
       );
-      if (context.mounted) {
+      if (mounted && context.mounted) {
         unawaited(
           showModalBottomSheet<void>(
             context: context,
@@ -613,10 +717,16 @@ class FinanceTabView extends ConsumerWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted && context.mounted) {
+        final AiErrorDescriptor err =
+            ViStrings.mapAiError(e is LifeOsApiException ? e.errorCode : null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi phân tích tài chính: $e')),
+          SnackBar(content: Text(err.message)),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingAiInsight = false);
       }
     }
   }

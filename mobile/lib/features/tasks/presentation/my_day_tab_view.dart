@@ -14,6 +14,7 @@ import '../../workspace/presentation/widgets/global_search_sheet.dart';
 import '../../workspace/presentation/widgets/life_wheel_sheet.dart';
 import 'widgets/life_rings_widget.dart';
 import 'widgets/my_day_habits_finance_section.dart';
+import 'widgets/task_editor_sheet.dart';
 
 /// Tab 0: Màn hình **Hôm nay (`My Day`)** — Trung tâm điều phối ngày đọc từ Stream Drift.
 class MyDayTabView extends ConsumerWidget {
@@ -48,28 +49,58 @@ class MyDayTabView extends ConsumerWidget {
     final AsyncValue<List<LocalEntityRow>> txsAsync = ref.watch(
       entitiesByTypeStreamProvider(SyncEntityType.financeTransaction),
     );
+    final AsyncValue<List<LocalEntityRow>> budgetsAsync = ref.watch(
+      entitiesByTypeStreamProvider(SyncEntityType.budget),
+    );
 
     final String todayIso =
         repo.getUserDayClock(userId).businessDateForUtc(refUtc);
+    final String monthPrefix =
+        todayIso.length >= 7 ? todayIso.substring(0, 7) : todayIso;
     final List<LocalEntityRow> myDayTasks =
         repo.queryMyDayTasks(userId: userId, todayIso: todayIso);
     final List<LocalEntityRow> habits =
         habitsAsync.valueOrNull ?? const <LocalEntityRow>[];
     final List<LocalEntityRow> txs =
         txsAsync.valueOrNull ?? const <LocalEntityRow>[];
+    final List<LocalEntityRow> budgets =
+        budgetsAsync.valueOrNull ?? const <LocalEntityRow>[];
 
     Decimal10k todayExpense = Decimal10k.zero;
+    Decimal10k monthlyExpense = Decimal10k.zero;
     for (final LocalEntityRow tx in txs) {
       final String kind =
           ((tx.payload['kind'] ?? tx.payload['type']) as String? ?? 'EXPENSE')
               .toUpperCase();
       final String? occurredOn =
           (tx.payload['occurredOn'] ?? tx.payload['transactionDate']) as String?;
-      if (kind == 'EXPENSE' && occurredOn == todayIso) {
-        todayExpense = todayExpense +
-            Decimal10k.parseJsonString((tx.payload['amount'] ?? '0').toString());
+      if (kind == 'EXPENSE' && occurredOn != null) {
+        final Decimal10k amt = Decimal10k.parseJsonString(
+          (tx.payload['amount'] ?? '0').toString(),
+        );
+        if (occurredOn == todayIso) {
+          todayExpense = todayExpense + amt;
+        }
+        if (occurredOn.startsWith(monthPrefix)) {
+          monthlyExpense = monthlyExpense + amt;
+        }
       }
     }
+
+    int realBudgetScaled = 0;
+    for (final LocalEntityRow b in budgets) {
+      if (b.payload['archived'] == true || b.payload['archivedAt'] != null) {
+        continue;
+      }
+      final Object? raw = b.payload['amount'];
+      if (raw != null) {
+        try {
+          realBudgetScaled +=
+              Decimal10k.parseJsonString(raw.toString()).scaledValue;
+        } catch (_) {}
+      }
+    }
+    final int realBudgetWholeVnd = realBudgetScaled ~/ Decimal10k.scaleFactor;
 
     final int doneTasksCount = myDayTasks.where((LocalEntityRow r) {
       final String s = (r.payload['status'] as String? ?? 'OPEN').toUpperCase();
@@ -179,6 +210,14 @@ class MyDayTabView extends ConsumerWidget {
                     horizontal: 12,
                     vertical: 2,
                   ),
+                  onTap: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => TaskEditorSheet(task: row),
+                    );
+                  },
                   leading: Checkbox(
                     value: done,
                     activeColor: tokens.domainTask,
@@ -239,6 +278,7 @@ class MyDayTabView extends ConsumerWidget {
       userId: userId,
       todayIso: todayIso,
       todayExpense: todayExpense,
+      monthlyExpense: monthlyExpense,
       habits: habits,
       allHabitEntries: allHabitEntries,
       heatmapMatrix: heatmapMatrix,
@@ -351,8 +391,8 @@ class MyDayTabView extends ConsumerWidget {
             taskTotal: myDayTasks.length,
             habitDone: doneHabitsCount,
             habitTotal: habits.length,
-            budgetSpentVnd: todayExpense.scaledValue ~/ Decimal10k.scaleFactor,
-            budgetLimitVnd: 1500000,
+            budgetSpentVnd: monthlyExpense.scaledValue ~/ Decimal10k.scaleFactor,
+            budgetLimitVnd: realBudgetWholeVnd,
           ),
         ),
         const SizedBox(height: LifeOsTokens.space3),

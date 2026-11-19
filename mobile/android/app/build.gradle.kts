@@ -1,10 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Khóa ký bản release đọc từ android/key.properties (đã nằm trong .gitignore, KHÔNG commit).
+// Thiếu file này thì bản release không build được — không bao giờ ký release bằng khóa debug (P-DWP7-03).
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
 android {
+    // namespace là package mã nguồn Kotlin (MainActivity), giữ nguyên; định danh cài đặt là applicationId bên dưới.
     namespace = "com.lifeos.lifeos_mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -16,8 +27,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.lifeos.lifeos_mobile"
+        // P-DWP7-01 [CONFIRMED]: định danh production thống nhất vn.lifeos.app.
+        applicationId = "vn.lifeos.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -31,11 +42,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
@@ -52,4 +74,17 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+
+// Chặn build bản release khi chưa có keystore riêng (chỉ kiểm lúc thực sự đóng gói release, debug không bị ảnh hưởng).
+gradle.taskGraph.whenReady {
+    val packagingRelease = allTasks.any { task ->
+        (task.name.startsWith("assemble") || task.name.startsWith("bundle")) && task.name.endsWith("Release")
+    }
+    if (packagingRelease && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "Thiếu android/key.properties: bản release phải ký bằng keystore riêng. " +
+                "Xem docs/ops/SELF_HOST_TUNNEL.md mục 2 (tạo keystore)."
+        )
+    }
 }

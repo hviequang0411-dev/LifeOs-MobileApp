@@ -17,7 +17,8 @@
 | 0.5 | `deploy/scripts/preflight.*`, `deploy/README.md`, `deploy/render/` chưa kiểm `SNAPSHOT_HMAC_SECRET` (độ dài ≥ 32, khác các khóa khác) và chưa có tài liệu xoay khóa | `BACKEND_FIX_REPORT.md` §5 | Giao agent deploy đợt sau; DWP6 có thể bật rule `LifeOSJobStale` vì producer đã có |
 | 0.6 | 503 `Lock not acquired` từng xuất hiện một lần ở `ExportPurgeFixIT.F5_concurrent…` | `BACKEND_FIX_REPORT.md` §7 | Theo dõi; nếu lặp lại trên CI thì điều tra lại cách khóa F5, không coi là môi trường |
 | 0.7 | `ci/mobile-ci-1.yml` khác `ci/mobile-ci.yml` — chưa rõ bản nào là chuẩn | Kiểm repo 2026-11-19 | Người dùng/agent mobile xác nhận và xóa bản thừa trước khi cài vào `.github/workflows/` |
-| 0.8 | Checklist go-live (§4) | `DEPLOY_AI_FINAL_REPORT.md` §9 | Không cần quyết ngay |
+| 0.8 | Checklist go-live (§4) | `DEPLOY_AI_FINAL_REPORT.md` §9 | **TẠM DỪNG theo người dùng (2026-11-19)**: không làm phát hành store/go-live cho tới khi người dùng hoàn thiện sản phẩm và yêu cầu mở lại |
+| 0.9 | Tự host cá nhân qua Cloudflare Quick Tunnel + APK tự ký | `docs/ops/SELF_HOST_TUNNEL.md` | Đã dựng và kiểm qua địa chỉ công khai 2026-11-19 (cần chạy ở mạng nhà; mạng công ty chặn), rồi **tạm dừng cùng mục 0.8**: container `cloudflared` đã dừng; chưa tạo keystore cá nhân, chưa build APK thật |
 
 ## 1. Backend — 75 mục `[PROPOSED]` trong `BACKEND_PROGRESS.md` (WP2–WP8) — **ĐÃ DUYỆT 2026-11-15**
 

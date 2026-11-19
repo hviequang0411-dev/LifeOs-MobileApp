@@ -19,6 +19,7 @@ import '../../workspace/presentation/widgets/life_wheel_sheet.dart';
 import '../../ai/presentation/ai_assistant_screen.dart';
 import '../../ai/presentation/widgets/ai_consent_sheet.dart';
 import '../../ai/presentation/widgets/ai_usage_and_limits_sheet.dart';
+import 'widgets/account_and_settings_sheets.dart';
 import 'widgets/notification_settings_sheet.dart';
 import 'widgets/review_wizard_sheet.dart';
 
@@ -147,7 +148,7 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
                 leading: Icon(Icons.search_rounded, color: tokens.domainTask),
                 title: const Text('Tìm kiếm trên thiết bị'),
                 subtitle: const Text(
-                  'Tra cứu nhanh công việc và ghi chú ngay cả khi không có mạng',
+                  'Tra cứu nhanh công việc, thói quen, mục tiêu và ghi chú ngay cả khi không có mạng',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () =>
@@ -227,6 +228,74 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
               ),
               const Divider(height: 1),
               ListTile(
+                key: const Key('tile_notifications_inbox'),
+                leading: Icon(
+                  Icons.inbox_outlined,
+                  color: tokens.accentPrimary,
+                ),
+                title: const Text('Hộp thư thông báo'),
+                subtitle: const Text(
+                  'Xem cảnh báo từ máy chủ và đánh dấu đã đọc',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openModalSheet(
+                  context,
+                  const NotificationsInboxSheet(),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const Key('tile_personal_settings'),
+                leading: Icon(
+                  Icons.tune_rounded,
+                  color: tokens.domainTask,
+                ),
+                title: const Text('Thông tin cá nhân & Múi giờ'),
+                subtitle: const Text(
+                  'Chỉnh tên hiển thị, múi giờ, tiền tệ mặc định và ngày đầu tuần',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openModalSheet(
+                  context,
+                  const PersonalSettingsSheet(),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const Key('tile_devices_sessions'),
+                leading: Icon(
+                  Icons.devices_rounded,
+                  color: tokens.textSecondary,
+                ),
+                title: const Text('Thiết bị & Phiên đăng nhập'),
+                subtitle: const Text(
+                  'Kiểm tra và thu hồi các thiết bị đã đăng nhập',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openModalSheet(
+                  context,
+                  const DevicesSheet(),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const Key('tile_account_privacy'),
+                leading: Icon(
+                  Icons.download_for_offline_outlined,
+                  color: tokens.textSecondary,
+                ),
+                title: const Text('Xuất dữ liệu & Xóa tài khoản'),
+                subtitle: const Text(
+                  'Tải bản sao lưu dữ liệu đồng bộ hoặc quản lý yêu cầu xóa tài khoản',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openModalSheet(
+                  context,
+                  const AccountPrivacySheet(),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
                 leading: Icon(Icons.sync_rounded, color: tokens.accentPrimary),
                 title: const Text('Trạng thái đồng bộ dữ liệu'),
                 subtitle: Text(
@@ -281,9 +350,9 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
               ListTile(
                 key: const Key('tile_logout_keep_local'),
                 leading: Icon(Icons.logout_rounded, color: tokens.textPrimary),
-                title: const Text('Đăng xuất tài khoản'),
+                title: const Text('Đăng xuất phiên (giữ dữ liệu trên máy)'),
                 subtitle: const Text(
-                  'Đăng xuất phiên làm việc hiện tại; giữ nguyên toàn bộ dữ liệu trên máy (Phương án C)',
+                  'Chỉ ngắt phiên đăng nhập trực tuyến; toàn bộ dữ liệu trên thiết bị được giữ nguyên',
                 ),
                 onTap: () async {
                   await ref.read(tokenStorageProvider).clearTokensOnly();
@@ -301,6 +370,9 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
                 onChanged: (bool isDark) {
                   ref.read(themeModeProvider.notifier).state =
                       isDark ? ThemeMode.dark : ThemeMode.light;
+                  ref
+                      .read(localExtrasRepositoryProvider)
+                      .setPref('theme_mode', isDark ? 'dark' : 'light');
                 },
               ),
               const Divider(height: 1),
@@ -318,10 +390,11 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: Icon(Icons.logout_rounded, color: tokens.textPrimary),
+                key: const Key('tile_safe_logout'),
+                leading: Icon(Icons.security_rounded, color: tokens.textPrimary),
                 title: const Text(ViStrings.logoutSafeTitle),
                 subtitle: const Text(
-                  'Bảo vệ 100% thay đổi chưa đồng bộ với 3 lựa chọn an toàn',
+                  'Đồng bộ, sao lưu dữ liệu chờ hoặc dọn bộ nhớ đệm trước khi thoát tài khoản',
                 ),
                 onTap: () {
                   showDialog<void>(
@@ -337,13 +410,30 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
                   Icons.shield_outlined,
                   color: tokens.accentPrimary,
                 ),
-                title: const Text('Quyền riêng tư & Hạn mức AI'),
+                title: const Text('Quyền riêng tư AI'),
                 subtitle: const Text(
-                  'Quản lý 5 miền dữ liệu consent và kiểm tra hạn mức sử dụng',
+                  'Quản lý 5 miền dữ liệu cấp quyền cho Trợ lý AI',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () =>
                     _openModalSheet(context, const AiConsentSheet()),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const Key('tile_ai_usage_limits'),
+                leading: Icon(
+                  Icons.pie_chart_outline_rounded,
+                  color: tokens.accentPrimary,
+                ),
+                title: const Text('Mức dùng & Hạn mức AI'),
+                subtitle: const Text(
+                  'Xem số lượt sử dụng, chi phí ước tính và giới hạn ngày/tháng',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openModalSheet(
+                  context,
+                  const AiUsageAndLimitsSheet(),
+                ),
               ),
               const Divider(height: 1),
               ListTile(
@@ -360,7 +450,7 @@ class OverviewAndSettingsTabView extends ConsumerWidget {
                   ),
                 ),
                 subtitle: const Text(
-                  'Xóa hội thoại, tin nhắn, nhật ký ngữ cảnh và reset consent về tắt (DELETE /ai/data)',
+                  'Xóa hội thoại, tin nhắn, nhật ký ngữ cảnh và đặt lại mọi quyền AI về tắt',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
@@ -448,7 +538,10 @@ class _WipeLocalDataDialogState extends ConsumerState<_WipeLocalDataDialog> {
     await tokenStorage.clearTokensOnly();
 
     // 2. Xóa tệp SQLite trên đĩa (hoặc VFS trên Web) nếu đang chạy ở chế độ file-backed
-    deleteLocalDatabaseFiles(userId);
+    deleteLocalDatabaseFiles(
+      userId,
+      baseDirectory: ref.read(localStorageBaseDirProvider),
+    );
 
     // 3. Đặt lại trạng thái phiên và đưa về màn hình đăng nhập
     ref.read(accountDeletionPendingBannerProvider.notifier).state = false;

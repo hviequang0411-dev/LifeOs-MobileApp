@@ -155,10 +155,15 @@ class FinanceRecurringAndSavingSection extends ConsumerWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${_formatFrequencyVi(freq, interval)} · Bắt đầu ${(item.payload['startOn'] as String?) ?? ''} · ${isActive ? 'Đang chạy' : 'Tạm dừng'}',
+                                '${_formatFrequencyVi(freq, interval)} · Bắt đầu ${(item.payload['startOn'] as String?) ?? ''} · ${isActive ? 'Đang chạy' : 'Tạm dừng (kiểm tra ví nguồn)'}',
                                 style: TextStyle(
                                   fontSize: 12.5,
-                                  color: tokens.textSecondary,
+                                  color: isActive
+                                      ? tokens.textSecondary
+                                      : tokens.warning,
+                                  fontWeight: isActive
+                                      ? FontWeight.w400
+                                      : FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -239,7 +244,18 @@ class FinanceRecurringAndSavingSection extends ConsumerWidget {
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: LifeOsTokens.space2),
-                child: LifeOsCard(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(LifeOsTokens.radiusMd),
+                  onTap: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => SavingGoalSheet(existing: goal),
+                    );
+                  },
+                  child: LifeOsCard(
                   elevation: 1,
                   padding: const EdgeInsets.all(LifeOsTokens.space3),
                   child: Column(
@@ -310,6 +326,7 @@ class FinanceRecurringAndSavingSection extends ConsumerWidget {
                       ),
                     ],
                   ),
+                ),
                 ),
               );
             }).toList(),

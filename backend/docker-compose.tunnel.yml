@@ -1,0 +1,39 @@
+# Tự host cá nhân qua Cloudflare Quick Tunnel (miễn phí, không cần domain). Dùng KÈM docker-compose.yml:
+#   powershell -ExecutionPolicy Bypass -File scripts/tunnel-up.ps1
+# (script tự sinh secret vào .env.tunnel, chạy stack và in địa chỉ https://*.trycloudflare.com).
+# Hướng dẫn đầy đủ: docs/ops/SELF_HOST_TUNNEL.md. Không phải cấu hình production (xem deploy/).
+services:
+  # Chỉ mở cổng trên máy này (127.0.0.1), không lộ ra mạng LAN; Internet chỉ vào được backend qua tunnel.
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+
+  mailpit:
+    ports: !override
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  backend:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Secret riêng của máy này thay cho giá trị mặc định dev công khai trong repo.
+      SNAPSHOT_HMAC_SECRET: ${SNAPSHOT_HMAC_SECRET:?Chạy scripts/tunnel-up.ps1 để sinh .env.tunnel}
+      NOTIFICATION_UNSUBSCRIBE_SECRET: ${NOTIFICATION_UNSUBSCRIBE_SECRET:?Chạy scripts/tunnel-up.ps1 để sinh .env.tunnel}
+      # Chỉ tin X-Forwarded-For khi kết nối đến từ mạng Docker nội bộ (container cloudflared), để rate limit thấy IP thật.
+      TRUSTED_PROXIES: '172\.(1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}'
+      # Không công bố tài liệu API ra Internet.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+    restart: unless-stopped
+
+  # Quick Tunnel: địa chỉ https://<ngẫu nhiên>.trycloudflare.com ĐỔI mỗi lần container này khởi động lại.
+  cloudflared:
+    image: cloudflare/cloudflared:2025.10.0
+    # http2 (TCP) thay vì QUIC (UDP) mặc định: QUIC đăng ký được nhưng không nhận request khi máy bật VPN/WARP (lỗi 1033, 2026-11-19).
+    command: tunnel --no-autoupdate --protocol http2 --url http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

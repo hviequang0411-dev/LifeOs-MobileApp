@@ -138,6 +138,20 @@
 | **AWP-5 — Hạn mức và dữ liệu AI** | `XONG (có bằng chứng: test/lệnh)` | `GET /ai/usage` + `GET /ai/limits`, cảnh báo $\ge 80\%$, format micro-USD số nguyên, dialog xóa nguy hiểm `XOA DU LIEU AI` (`DELETE /ai/data`). |
 | **AWP-6 — Kiểm thử, Golden & Hiệu năng** | `XONG (có bằng chứng: test/lệnh)` | `dart analyze` = `No issues found!`, `flutter test --no-pub -j 1` = `104 passed, 1 skipped, 0 failed`, 6 ảnh Golden AI Light/Dark đạt 0px sai khác, benchmark 50k chạy lẻ = **11.0s** (baseline 10–14s). E2E Docker backend thật ghi rõ `CHƯA CHẠY` do `FakeLLMProvider` mang `@Profile("test")`. |
 
+---
+
+## 8. Triển khai Khắc phục Màn hình Chức năng (Wave 1–3, 2026-11-19)
+
+Báo cáo chi tiết: [`docs/review/MOBILE_SCREENS_REMEDIATION_REPORT.md`](file:///d:/LifeOS/docs/review/MOBILE_SCREENS_REMEDIATION_REPORT.md)
+
+| Đợt | Trạng thái | Tóm tắt hạng mục & Bằng chứng |
+|---|---|---|
+| **Wave 1 (P0)** | `XONG (có bằng chứng: test/lệnh)` | Sửa 17 endpoint AI bỏ prefix `/api/v1` trùng (`ai_api.dart`), lưu trữ bền vững `!kIsWeb` với bảng `local_device_prefs` trong `LifeOsLocalExtrasDatabase` (phát sinh `[PROPOSED] D-M10`, không chạm `drift_tables.dart`), nối banner hủy xóa tài khoản/đăng nhập lại & `SafeLogoutDialog`, hoàn thiện Quick Capture Tab Việc & Thu/Chi (`UUID` ví thật). |
+| **Wave 2 (P1)** | `XONG (có bằng chứng: test/lệnh)` | Bổ sung `TaskEditorSheet`, `HabitEditorSheet`, bộ sheet Tài chính & Kế hoạch/Lịch (`plan_forms_sheets.dart`, `finance_forms_sheets.dart`), quy tắc Finance F1 (`FINANCE_CURRENCY_MISMATCH`) & F6 (archive ví chuyển định kỳ sang `PAUSED` giữ `nextRunOn`), sửa rò rỉ `_selectedDayOffset`, nối Weekly Plan AI & consent gating. |
+| **Wave 3 (P2)** | `XONG (có bằng chứng: test/lệnh)` | Thêm CRUD Tag + `note_tag` + lọc lưu trữ + nút lưu cố định `btn_save_note` trên `NoteEditorSheet`, validate `YYYY-MM-DD` (`target >= start`) trên Goal/Milestone, Search mở rộng & chạm mở form, `ReviewWizardSheet` đa kỳ + `ReviewHistorySheet`, `PersonalSettingsSheet`/`DevicesSheet`/`AccountPrivacySheet`/`NotificationsInboxSheet`, phân trang AI & khử lộ chuỗi kỹ thuật. |
+| **Kiểm thử, Golden & Hiệu năng (`D-M08`)** | `XONG (có bằng chứng: test/lệnh)` | - `dart analyze mobile`: `No issues found!`<br>- [`test/screens_remediation_test.dart`](file:///d:/LifeOS/mobile/test/screens_remediation_test.dart): **21/21 đạt**<br>- Full suite `flutter test --no-pub -j 1`: **`125 passed, 1 skipped, 0 failed`** (`02:32 +125 ~1: All tests passed!`; `~1` bỏ qua là `e2e_real_backend_test.dart` mặc định)<br>- Golden 2 lượt liên tiếp không `--update-goldens`: **`31/31 đạt`** cả 2 lượt (6 ảnh AI + 4 ảnh Login/Routine giữ `0px` diff; 17 ảnh trong `mobile/test/goldens/` cập nhật có chủ đích)<br>- **Benchmark 50k chạy lẻ (`D-M08`, `test/domain_modules_and_perf_test.dart`):** **`00:11 +7: All tests passed!`** (**11 giây**, trong mốc 10–14 s). |
+
+
 
 
 

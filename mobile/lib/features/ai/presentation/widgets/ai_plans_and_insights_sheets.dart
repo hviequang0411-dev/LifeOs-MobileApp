@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/l10n/vi_strings.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
@@ -163,17 +164,19 @@ class AiPlanResultSheet extends ConsumerWidget {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: item.priority == 'HIGH'
+                                  color: (item.priority == 'HIGH' ||
+                                          item.priority == 'URGENT')
                                       ? tokens.danger.withValues(alpha: 0.12)
                                       : tokens.borderSubtle,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  item.priority,
+                                  ViStrings.formatTaskPriority(item.priority),
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: item.priority == 'HIGH'
+                                    color: (item.priority == 'HIGH' ||
+                                            item.priority == 'URGENT')
                                         ? tokens.danger
                                         : tokens.textSecondary,
                                   ),
@@ -212,11 +215,12 @@ class AiPlanResultSheet extends ConsumerWidget {
                                   userId: userId,
                                   title: item.title,
                                   priority: item.priority,
+                                  nowUtc: ref.read(referenceUtcProvider),
                                 );
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Đã tạo công việc "${item.title}" vào danh sách của bạn (tự tạo thủ công qua Outbox).',
+                                      'Đã thêm công việc "${item.title}" vào danh sách của bạn.',
                                     ),
                                   ),
                                 );
@@ -283,7 +287,7 @@ class AiTaskBreakdownSheet extends ConsumerWidget {
                 const SizedBox(width: LifeOsTokens.space2),
                 Expanded(
                   child: Text(
-                    'Chia nhỏ công việc (AI Breakdown)',
+                    'Gợi ý chia nhỏ công việc',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -363,11 +367,12 @@ class AiTaskBreakdownSheet extends ConsumerWidget {
                                   description: item.description,
                                   priority: item.priority,
                                   dueDate: item.suggestedDueDate,
+                                  nowUtc: ref.read(referenceUtcProvider),
                                 );
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Đã tạo việc "${item.title}" qua hàng đợi đồng bộ.',
+                                      'Đã thêm công việc "${item.title}" vào danh sách của bạn.',
                                     ),
                                   ),
                                 );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/l10n/vi_strings.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
 import '../../data/ai_api.dart';
@@ -26,7 +28,10 @@ class AiConversationListSheet extends ConsumerStatefulWidget {
 class _AiConversationListSheetState
     extends ConsumerState<AiConversationListSheet> {
   List<AiConversationResponse> _items = <AiConversationResponse>[];
+  String? _nextCursor;
+  bool _hasMore = false;
   bool _isLoading = true;
+  bool _isLoadingMore = false;
   String? _errorMessage;
 
   @override
@@ -43,19 +48,55 @@ class _AiConversationListSheetState
 
     final AiApiClient api = ref.read(aiApiClientProvider);
     try {
-      final AiConversationPage page = await api.listConversations();
+      final AiConversationPage page = await api.listConversations(limit: 30);
       if (mounted) {
         setState(() {
-          _items = page.items;
+          _items = List<AiConversationResponse>.from(page.items);
+          _nextCursor = page.nextCursor;
+          _hasMore = page.hasMore;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
+        final AiErrorDescriptor desc =
+            ViStrings.mapAiError(e is LifeOsApiException ? e.errorCode : null);
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = desc.message;
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadMoreConversations() async {
+    if (_isLoadingMore || !_hasMore || _nextCursor == null) return;
+    setState(() => _isLoadingMore = true);
+    final AiApiClient api = ref.read(aiApiClientProvider);
+    try {
+      final AiConversationPage page =
+          await api.listConversations(limit: 30, cursor: _nextCursor);
+      if (mounted) {
+        final Set<String> seen =
+            _items.map((AiConversationResponse c) => c.id).toSet();
+        final List<AiConversationResponse> appended = page.items
+            .where((AiConversationResponse c) => !seen.contains(c.id))
+            .toList();
+        setState(() {
+          _items.addAll(appended);
+          _nextCursor = page.nextCursor;
+          _hasMore = page.hasMore;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+        final AiErrorDescriptor desc =
+            ViStrings.mapAiError(e is LifeOsApiException ? e.errorCode : null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(desc.message)),
+        );
       }
     }
   }
@@ -102,8 +143,11 @@ class _AiConversationListSheetState
         }
       } catch (e) {
         if (mounted) {
+          final AiErrorDescriptor desc = ViStrings.mapAiError(
+            e is LifeOsApiException ? e.errorCode : null,
+          );
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi khi xóa hội thoại: $e')),
+            SnackBar(content: Text(desc.message)),
           );
         }
       }
@@ -115,17 +159,17 @@ class _AiConversationListSheetState
     final LifeOsTokens tokens = LifeOsTokens.of(context);
     final String? activeId = ref.watch(aiActiveConversationIdProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.bgSurface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(LifeOsTokens.radiusLg),
+    return Material(
+      color: tokens.bgSurface,
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(LifeOsTokens.radiusLg),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
         ),
-      ),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-      ),
-      child: Column(
+        child: Column(
         children: <Widget>[
           // Header
           Padding(
@@ -205,10 +249,24 @@ class _AiConversationListSheetState
                             ),
                           )
                         : ListView.separated(
-                            itemCount: _items.length,
+                            itemCount: _items.length + (_hasMore ? 1 : 0),
                             separatorBuilder: (_, __) =>
                                 const Divider(height: 1),
                             itemBuilder: (BuildContext ctx, int idx) {
+                              if (_hasMore && idx == _items.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.all(LifeOsTokens.space3),
+                                  child: OutlinedButton(
+                                    key: const Key('btn_load_more_ai_conversations'),
+                                    onPressed: _isLoadingMore
+                                        ? null
+                                        : _loadMoreConversations,
+                                    child: Text(
+                                      _isLoadingMore ? 'Đang tải...' : 'Tải thêm',
+                                    ),
+                                  ),
+                                );
+                              }
                               final AiConversationResponse conv = _items[idx];
                               final bool isActive = conv.id == activeId;
 
@@ -258,6 +316,7 @@ class _AiConversationListSheetState
                           ),
           ),
         ],
+      ),
       ),
     );
   }

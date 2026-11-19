@@ -3,22 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/calculators/habit_calculator.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/l10n/vi_strings.dart';
 import '../../../../core/money/decimal10k.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/sync/entity_types.dart';
 import '../../../../core/theme/app_tokens.dart';
+import '../../../../core/time/user_day_clock.dart';
 import '../../../../core/widgets/lifeos_widgets.dart';
+import '../../../ai/data/ai_models.dart';
+import '../../../ai/data/ai_providers.dart';
+import '../../../ai/presentation/widgets/ai_plans_and_insights_sheets.dart';
 import '../../../finance/presentation/widgets/budget_pace_gauge.dart';
+import '../../../habits/presentation/widgets/habit_editor_sheet.dart';
 import '../../../habits/presentation/widgets/habit_heatmap_widget.dart';
 import '../../../workspace/data/lifeos_local_repository.dart';
 
 /// Khối Tài chính hôm nay + Thước đo ngân sách & Thói quen 1 chạm trên tab My Day.
-class MyDayHabitsFinanceSection extends ConsumerWidget {
+class MyDayHabitsFinanceSection extends ConsumerStatefulWidget {
   const MyDayHabitsFinanceSection({
     super.key,
     required this.userId,
     required this.todayIso,
     required this.todayExpense,
+    this.monthlyExpense,
     required this.habits,
     required this.allHabitEntries,
     required this.heatmapMatrix,
@@ -27,12 +35,69 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
   final String userId;
   final String todayIso;
   final Decimal10k todayExpense;
+  final Decimal10k? monthlyExpense;
   final List<LocalEntityRow> habits;
   final List<LocalEntityRow> allHabitEntries;
   final Map<String, int> heatmapMatrix;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyDayHabitsFinanceSection> createState() =>
+      _MyDayHabitsFinanceSectionState();
+}
+
+class _MyDayHabitsFinanceSectionState
+    extends ConsumerState<MyDayHabitsFinanceSection> {
+  bool _loadingHabitInsight = false;
+
+  Future<void> _handleAiHabitInsight() async {
+    if (_loadingHabitInsight) return;
+    setState(() => _loadingHabitInsight = true);
+    try {
+      final String fromIso = UserDayClock.addDays(widget.todayIso, -29);
+      final AiInsightResponse insight = await ref
+          .read(aiApiClientProvider)
+          .createHabitInsight(
+            from: fromIso,
+            to: widget.todayIso,
+            contextDomains: const <String>['HABIT'],
+          );
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => AiInsightSheet(
+          title: 'Phân tích thói quen từ AI',
+          insight: insight,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final AiErrorDescriptor err =
+          ViStrings.mapAiError(e is LifeOsApiException ? e.errorCode : null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err.message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingHabitInsight = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String userId = widget.userId;
+    final String todayIso = widget.todayIso;
+    final Decimal10k todayExpense = widget.todayExpense;
+    final Decimal10k paceSpent = widget.monthlyExpense ?? todayExpense;
+    final List<LocalEntityRow> habits = widget.habits;
+    final List<LocalEntityRow> allHabitEntries = widget.allHabitEntries;
+    final Map<String, int> heatmapMatrix = widget.heatmapMatrix;
+    final AiPreferencesResponse? aiPrefs =
+        ref.watch(aiPreferencesProvider).valueOrNull;
+    final bool allowHabitInsight = aiPrefs?.habit == true;
+    final bool isOnline = ref.watch(aiIsOnlineProvider);
     final LifeOsTokens tokens = LifeOsTokens.of(context);
     final LifeOsLocalRepository repo = ref.watch(localRepositoryProvider);
     final bool masked = ref.watch(privacyMaskAmountsProvider);
@@ -127,22 +192,56 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
         ),
         const SizedBox(height: LifeOsTokens.space3),
         BudgetPaceGauge(
-          spentFormatted: todayExpense.formatDisplay(masked: masked),
+          spentFormatted: paceSpent.formatDisplay(masked: masked),
           limitFormatted: realBudgetScaled > 0
               ? realBudgetLimit.formatDisplay(masked: masked)
               : 'Chưa đặt',
           spentRatio: realBudgetScaled > 0
-              ? (todayExpense.percentageBasisPointsOf(realBudgetLimit) / 10000.0)
+              ? (paceSpent.percentageBasisPointsOf(realBudgetLimit) / 10000.0)
                   .clamp(0.0, 1.5)
               : 0.0,
           monthElapsedRatio: (refUtc.toLocal().day / 30.0).clamp(0.05, 1.0),
         ),
         const SizedBox(height: LifeOsTokens.space4),
-        Text(
-          'Thói quen trong ngày (1 chạm)',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                'Thói quen trong ngày (1 chạm)',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
+            ),
+            if (allowHabitInsight)
+              TextButton.icon(
+                key: const Key('btn_ai_habit_insight'),
+                onPressed: isOnline && !_loadingHabitInsight
+                    ? _handleAiHabitInsight
+                    : null,
+                icon: _loadingHabitInsight
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: const Text('AI phân tích'),
+              ),
+            IconButton(
+              key: const Key('btn_open_create_habit'),
+              tooltip: 'Thêm thói quen mới',
+              onPressed: () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const HabitEditorSheet(),
+                );
+              },
+              icon: const Icon(Icons.add_circle_outline_rounded),
+            ),
+          ],
         ),
         const SizedBox(height: LifeOsTokens.space2),
         if (habits.isNotEmpty) ...<Widget>[
@@ -155,6 +254,7 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
                 )
                 .currentStreak,
             completionMatrix: heatmapMatrix,
+            referenceDateIso: todayIso,
           ),
           const SizedBox(height: LifeOsTokens.space3),
         ],
@@ -228,16 +328,27 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
                 final Widget habitActionButton = _buildHabitButton(
                   tokens: tokens,
                   repo: repo,
+                  userId: userId,
+                  todayIso: todayIso,
                   habitId: habitRow.id,
                   todayStatus: todayStatus,
                 );
 
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: LifeOsTokens.space3,
-                    vertical: 8,
-                  ),
-                  child: Row(
+                return InkWell(
+                  onTap: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => HabitEditorSheet(habit: habitRow),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: LifeOsTokens.space3,
+                      vertical: 8,
+                    ),
+                    child: Row(
                     children: <Widget>[
                       Expanded(
                         child: Column(
@@ -275,6 +386,7 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
                       habitActionButton,
                     ],
                   ),
+                ),
                 );
               }).toList(),
             ),
@@ -286,6 +398,8 @@ class MyDayHabitsFinanceSection extends ConsumerWidget {
   Widget _buildHabitButton({
     required LifeOsTokens tokens,
     required LifeOsLocalRepository repo,
+    required String userId,
+    required String todayIso,
     required String habitId,
     required String? todayStatus,
   }) {

@@ -155,6 +155,11 @@ class LifeOsLocalExtrasDatabase {
         completed INTEGER NOT NULL,
         tag TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS local_device_prefs (
+        pref_key TEXT PRIMARY KEY,
+        pref_value TEXT NOT NULL
+      );
     ''');
   }
 
@@ -246,9 +251,46 @@ class LifeOsLocalExtrasDatabase {
     return val is int ? val : 0;
   }
 
+  // --- Cài đặt cục bộ trên thiết bị (theme_mode, notification_prefs) ---
+  String? getPref(String key) {
+    final ResultSet rs = _rawDb.select(
+      'SELECT pref_value FROM local_device_prefs WHERE pref_key = ? LIMIT 1;',
+      <Object?>[key],
+    );
+    if (rs.isEmpty) return null;
+    return rs.first['pref_value'] as String?;
+  }
+
+  void setPref(String key, String value) {
+    final CommonPreparedStatement stmt = _rawDb.prepare('''
+      INSERT INTO local_device_prefs (pref_key, pref_value)
+      VALUES (?, ?)
+      ON CONFLICT(pref_key) DO UPDATE SET pref_value = excluded.pref_value;
+    ''');
+    try {
+      stmt.execute(<Object?>[key, value]);
+      _changesController.add(null);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  void deletePref(String key) {
+    final CommonPreparedStatement stmt = _rawDb.prepare(
+      'DELETE FROM local_device_prefs WHERE pref_key = ?;',
+    );
+    try {
+      stmt.execute(<Object?>[key]);
+      _changesController.add(null);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
   void clearAll() {
     _rawDb.execute('DELETE FROM local_life_wheel_assessments;');
     _rawDb.execute('DELETE FROM local_focus_sessions;');
+    _rawDb.execute('DELETE FROM local_device_prefs;');
     _changesController.add(null);
   }
 

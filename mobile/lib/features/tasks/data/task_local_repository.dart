@@ -261,9 +261,26 @@ class TaskAndHabitLocalRepository {
     return filtered;
   }
 
+  static int _encodeWeekdaysBitmask(String frequencyType, List<int> daysOfWeek) {
+    final String upper = frequencyType.trim().toUpperCase();
+    if (upper == 'DAILY' || daysOfWeek.isEmpty) {
+      return 127;
+    }
+    int mask = 0;
+    for (final int day in daysOfWeek) {
+      if (day >= 1 && day <= 7) {
+        mask |= 1 << (day - 1);
+      }
+    }
+    return mask == 0 ? 127 : mask;
+  }
+
   String createHabit({
     required String userId,
     required String name,
+    String? description,
+    String? color,
+    String? icon,
     String frequencyType = 'DAILY',
     String trackingType = 'BOOLEAN',
     int? targetCount,
@@ -272,9 +289,12 @@ class TaskAndHabitLocalRepository {
     int? timesPerWeek,
     int? intervalDays,
     String? startOn,
+    String? endOn,
+    String? reminderTime,
     DateTime? nowUtc,
   }) {
     final String id = _uuid.v4();
+    final int weekdaysBitmask = _encodeWeekdaysBitmask(frequencyType, daysOfWeek);
     db.mutateLocalAndEnqueueOutbox(
       userId: userId,
       entityType: SyncEntityType.habit,
@@ -283,15 +303,24 @@ class TaskAndHabitLocalRepository {
       payload: <String, dynamic>{
         'id': id,
         'name': name.trim(),
+        if (description != null && description.trim().isNotEmpty)
+          'description': description.trim(),
+        if (color != null && color.trim().isNotEmpty) 'color': color.trim(),
+        if (icon != null && icon.trim().isNotEmpty) 'icon': icon.trim(),
         'scheduleType': frequencyType,
         'frequencyType': frequencyType,
         'trackingType': trackingType,
         'targetCount': targetCount,
         'targetDurationSeconds': targetDurationSeconds,
         'daysOfWeek': daysOfWeek,
+        'weekdays': weekdaysBitmask,
         'timesPerWeek': timesPerWeek,
         'intervalDays': intervalDays,
-        if (startOn != null) 'startOn': startOn,
+        if (startOn != null && startOn.trim().isNotEmpty)
+          'startOn': startOn.trim(),
+        if (endOn != null && endOn.trim().isNotEmpty) 'endOn': endOn.trim(),
+        if (reminderTime != null && reminderTime.trim().isNotEmpty)
+          'reminderTime': reminderTime.trim(),
         'archived': false,
       },
       nowUtc: nowUtc,
@@ -546,6 +575,301 @@ class TaskAndHabitLocalRepository {
       }
     }
     return map;
+  }
+
+  /// Cập nhật Thói quen và đẩy qua Outbox.
+  void updateHabit({
+    required String userId,
+    required String habitId,
+    String? name,
+    String? description,
+    String? color,
+    String? icon,
+    String? frequencyType,
+    List<int>? daysOfWeek,
+    int? timesPerWeek,
+    int? intervalDays,
+    String? startOn,
+    String? endOn,
+    String? reminderTime,
+    bool? archived,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.habit,
+      entityId: habitId,
+    );
+    if (existing == null) return;
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    if (name != null && name.trim().isNotEmpty) {
+      next['name'] = name.trim();
+    }
+    if (description != null) {
+      if (description.trim().isEmpty) {
+        next.remove('description');
+      } else {
+        next['description'] = description.trim();
+      }
+    }
+    if (color != null) {
+      if (color.trim().isEmpty) {
+        next.remove('color');
+      } else {
+        next['color'] = color.trim();
+      }
+    }
+    if (icon != null) {
+      if (icon.trim().isEmpty) {
+        next.remove('icon');
+      } else {
+        next['icon'] = icon.trim();
+      }
+    }
+    final String effectiveType = (frequencyType ??
+            next['scheduleType'] as String? ??
+            next['frequencyType'] as String? ??
+            'DAILY')
+        .toUpperCase();
+    final List<int> effectiveDays = daysOfWeek ??
+        ((next['daysOfWeek'] as List<dynamic>?)
+                ?.whereType<num>()
+                .map((num n) => n.toInt())
+                .toList() ??
+            const <int>[]);
+    if (frequencyType != null || daysOfWeek != null) {
+      next['scheduleType'] = effectiveType;
+      next['frequencyType'] = effectiveType;
+      next['daysOfWeek'] = effectiveDays;
+      next['weekdays'] = _encodeWeekdaysBitmask(effectiveType, effectiveDays);
+      next['timesPerWeek'] = effectiveType == 'TIMES_PER_WEEK'
+          ? (timesPerWeek ?? next['timesPerWeek'] ?? 3)
+          : null;
+      next['intervalDays'] = effectiveType == 'INTERVAL'
+          ? (intervalDays ?? next['intervalDays'] ?? 2)
+          : null;
+    } else {
+      if (timesPerWeek != null) next['timesPerWeek'] = timesPerWeek;
+      if (intervalDays != null) next['intervalDays'] = intervalDays;
+    }
+    if (startOn != null) {
+      if (startOn.trim().isEmpty) {
+        next.remove('startOn');
+      } else {
+        next['startOn'] = startOn.trim();
+      }
+    }
+    if (endOn != null) {
+      if (endOn.trim().isEmpty) {
+        next.remove('endOn');
+      } else {
+        next['endOn'] = endOn.trim();
+      }
+    }
+    if (reminderTime != null) {
+      if (reminderTime.trim().isEmpty) {
+        next.remove('reminderTime');
+      } else {
+        next['reminderTime'] = reminderTime.trim();
+      }
+    }
+    if (archived != null) {
+      next['archived'] = archived;
+      next['archivedAt'] =
+          archived ? (nowUtc ?? DateTime.now().toUtc()).toIso8601String() : null;
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.habit,
+      entityId: habitId,
+      op: 'UPDATE',
+      payload: <String, dynamic>{...next, 'id': habitId},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Xóa mềm Thói quen.
+  void deleteHabit({
+    required String userId,
+    required String habitId,
+    DateTime? nowUtc,
+  }) {
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.habit,
+      entityId: habitId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Cập nhật Dự án (`project`). Lưu ý SYNC_PROTOCOL L350: payload dùng `archived` boolean.
+  void updateProject({
+    required String userId,
+    required String projectId,
+    required String name,
+    String? description,
+    String? color,
+    bool? archived,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.project,
+      entityId: projectId,
+    );
+    if (existing == null) return;
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    next['name'] = name.trim();
+    if (description != null) {
+      next['description'] =
+          description.trim().isEmpty ? null : description.trim();
+    }
+    if (color != null && color.trim().isNotEmpty) {
+      next['color'] = color.trim();
+    }
+    if (archived != null) {
+      next['archived'] = archived;
+      next['archivedAt'] =
+          archived ? (nowUtc ?? DateTime.now().toUtc()).toIso8601String() : null;
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.project,
+      entityId: projectId,
+      op: 'UPDATE',
+      payload: <String, dynamic>{...next, 'id': projectId},
+      nowUtc: nowUtc,
+    );
+  }
+
+  /// Cập nhật Routine cùng danh sách bước (`routine_step`).
+  void updateRoutine({
+    required String userId,
+    required String routineId,
+    required String name,
+    String? kind,
+    int? weekdays,
+    String? reminderTime,
+    List<({String title, int? durationMinutes})>? steps,
+    DateTime? nowUtc,
+  }) {
+    final LocalEntityRow? existing = db.getEntity(
+      userId: userId,
+      entityType: SyncEntityType.routine,
+      entityId: routineId,
+    );
+    if (existing == null) return;
+    final Map<String, dynamic> next =
+        Map<String, dynamic>.from(existing.payload);
+    final String normalizedKind =
+        (kind ?? next['kind'] as String? ?? 'DAILY').trim().toUpperCase();
+    next['name'] = name.trim();
+    next['kind'] = normalizedKind;
+    next['weekdays'] =
+        normalizedKind == 'DAILY' ? null : (weekdays ?? next['weekdays'] ?? 127);
+    if (reminderTime != null) {
+      if (reminderTime.trim().isEmpty) {
+        next.remove('reminderTime');
+      } else {
+        next['reminderTime'] = reminderTime.trim();
+      }
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.routine,
+      entityId: routineId,
+      op: 'UPDATE',
+      payload: <String, dynamic>{...next, 'id': routineId},
+      nowUtc: nowUtc,
+    );
+
+    if (steps != null) {
+      final List<LocalEntityRow> oldSteps =
+          listRoutineSteps(userId: userId, routineId: routineId);
+      final int sharedCount =
+          steps.length < oldSteps.length ? steps.length : oldSteps.length;
+      for (int i = 0; i < sharedCount; i++) {
+        final LocalEntityRow oldStep = oldSteps[i];
+        final ({String title, int? durationMinutes}) spec = steps[i];
+        final int duration = (spec.durationMinutes ?? 5).clamp(1, 240);
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.routineStep,
+          entityId: oldStep.id,
+          op: 'UPDATE',
+          payload: <String, dynamic>{
+            ...oldStep.payload,
+            'id': oldStep.id,
+            'routineId': routineId,
+            'title': spec.title.trim(),
+            'position': (i + 1) * 1000,
+            'durationMinutes': duration,
+          },
+          nowUtc: nowUtc,
+        );
+      }
+      for (int i = sharedCount; i < steps.length; i++) {
+        final String stepId = _uuid.v4();
+        final ({String title, int? durationMinutes}) spec = steps[i];
+        final int duration = (spec.durationMinutes ?? 5).clamp(1, 240);
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.routineStep,
+          entityId: stepId,
+          op: 'CREATE',
+          payload: <String, dynamic>{
+            'id': stepId,
+            'routineId': routineId,
+            'title': spec.title.trim(),
+            'position': (i + 1) * 1000,
+            'durationMinutes': duration,
+          },
+          nowUtc: nowUtc,
+        );
+      }
+      for (int i = sharedCount; i < oldSteps.length; i++) {
+        db.mutateLocalAndEnqueueOutbox(
+          userId: userId,
+          entityType: SyncEntityType.routineStep,
+          entityId: oldSteps[i].id,
+          op: 'DELETE',
+          payload: const <String, dynamic>{},
+          nowUtc: nowUtc,
+        );
+      }
+    }
+  }
+
+  /// Xóa mềm Routine cùng toàn bộ các bước con (`routine_step`).
+  void deleteRoutine({
+    required String userId,
+    required String routineId,
+    DateTime? nowUtc,
+  }) {
+    final List<LocalEntityRow> steps =
+        listRoutineSteps(userId: userId, routineId: routineId);
+    for (final LocalEntityRow step in steps) {
+      db.mutateLocalAndEnqueueOutbox(
+        userId: userId,
+        entityType: SyncEntityType.routineStep,
+        entityId: step.id,
+        op: 'DELETE',
+        payload: const <String, dynamic>{},
+        nowUtc: nowUtc,
+      );
+    }
+    db.mutateLocalAndEnqueueOutbox(
+      userId: userId,
+      entityType: SyncEntityType.routine,
+      entityId: routineId,
+      op: 'DELETE',
+      payload: const <String, dynamic>{},
+      nowUtc: nowUtc,
+    );
   }
 }
 
