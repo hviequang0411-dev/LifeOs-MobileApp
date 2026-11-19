@@ -1,9 +1,9 @@
 # LifeOS — Báo cáo Deploy + AI Assistant
 
-> **Trạng thái:** **AIP2 XONG (bằng chứng); AIP3 MỘT PHẦN; AIP4 XONG (bằng chứng); AIP7 MỘT PHẦN — NO-GO production** (cập nhật 2026-11-14).  
+> **Trạng thái:** **AIP2 XONG (bằng chứng); AIP3 MỘT PHẦN; AIP4 XONG (bằng chứng); AIP7 MỘT PHẦN — NO-GO production** (cập nhật 2026-11-14; đồng bộ tài liệu 2026-11-19).  
 > **Phạm vi đã thực hiện:** AIP1–AIP4 local/fake, hardening AIP7 local và artifact/source/runbook DWP1–DWP8; AIP5/AIP6 vẫn hoãn.  
-> **Đang chờ quyết định:** `[OPEN] AIP7-OPENAPI-01` về bốn path action proposal thuộc AIP6; provisioning/live rehearsal, provider/ZDR thật và phát hành mobile vẫn chưa thực hiện.  
-> **Điều kiện đã gỡ:** review backend đã có kết quả; sửa lỗi backend được người dùng hoãn. Phần live vẫn cần account, quyền và secret con người mà không có fake/local path thay thế bằng bằng chứng production.  
+> **Đang chờ:** provisioning/live rehearsal, provider/ZDR thật và phát hành mobile vẫn chưa thực hiện. `AIP7-OPENAPI-01` đã `[CONFIRMED]` 2026-11-14 — phương án (a), giữ overlay bốn path action proposal tới khi mở AIP6 (`DEPLOY_AI_PROGRESS.md` §14.6).  
+> **Điều kiện đã gỡ:** review backend đã có kết quả; đợt sửa backend F1–F9 đã chạy xong 2026-11-15 (936/936 test, migration V13, gauge `lifeos.job.last_success` — xem `BACKEND_FIX_REPORT.md`). Phần live vẫn cần account, quyền và secret con người mà không có fake/local path thay thế bằng bằng chứng production.  
 > **Nhật ký chi tiết:** `docs/review/DEPLOY_AI_PROGRESS.md`. Báo cáo này dùng tên file bàn giao theo mẫu, không có nghĩa toàn bộ Deploy/AI đã hoàn thành.
 
 ---
@@ -37,7 +37,7 @@ Thời gian wall-clock từng gói không được ghi tự động trong phiên
 | AIP4 | **XONG (bằng chứng)** | Plan ngày/tuần, breakdown, Habit/Finance insight, Note summary; AI-09..15 xanh | Nằm trong full verify | Không có phần local/fake bắt buộc còn thiếu |
 | AIP5 | HOÃN theo O-AI-06 | Không | — | RAG/pgvector chỉ sau addendum, benchmark và restore ổn định |
 | AIP6 | HOÃN theo O-AI-05 | Không | — | Task action proposal, feature flag mặc định tắt |
-| AIP7 | **MỘT PHẦN** | AI-20/32/36..38, A15, secret scan; 3 full verify liên tiếp, mỗi lượt 879 test xanh | 08:32; 07:02; 07:05 | Live provider/load/metrics/restore/ZDR và `[OPEN] AIP7-OPENAPI-01` |
+| AIP7 | **MỘT PHẦN** | AI-20/32/36..38, A15, secret scan; 3 full verify liên tiếp, mỗi lượt 879 test xanh | 08:32; 07:02; 07:05 | Live provider/load/metrics/restore/ZDR (`AIP7-OPENAPI-01` đã `[CONFIRMED]` 2026-11-14) |
 
 ### 2.1. Môi trường kiểm chứng
 
@@ -48,9 +48,10 @@ Thời gian wall-clock từng gói không được ghi tự động trong phiên
 | Migration | Trạng thái | Ghi chú |
 |---|---|---|
 | V12 AI | **ĐÃ TRIỂN KHAI VÀ TEST** | D290 được giữ nguyên; V1–V11 bất biến; Flyway clean/upgrade 9/9 xanh |
-| V13 pgvector/RAG | **HOÃN** | O-AI-06: chỉ xem xét sau số đo chat và restore staging ổn định |
+| V13 backend fixes | **ĐÃ TRIỂN KHAI VÀ TEST** (2026-11-15) | Thuộc đợt sửa backend F5/F8 (`BACKEND_FIX_REPORT.md` §2), không thuộc AI; số V13 nay đã dùng |
+| pgvector/RAG (số migration kế tiếp còn trống) | **HOÃN** | O-AI-06: chỉ xem xét sau số đo chat và restore staging ổn định |
 
-V1–V11 không bị sửa. Migration image hiện chỉ đóng gói migration đã có và chạy Flyway qua one-off job/role DDL riêng. Không có down migration tự động.
+V1–V12 không bị sửa (V13 là migration mới của đợt sửa backend). Migration image hiện chỉ đóng gói migration đã có và chạy Flyway qua one-off job/role DDL riêng. Không có down migration tự động.
 
 ---
 
@@ -168,7 +169,7 @@ ai-usage.response.json
 ai-error.response.json
 ```
 
-Các fixture dùng dữ liệu giả và đã qua kiểm tĩnh cấm `userId`, email, password, API/access/refresh/device/FCM token. Runtime hiện sinh đúng 14 path/17 operation ID thuộc AIP2–AIP4; bốn path action proposal thuộc AIP6 vẫn là overlay. Marker chỉ được xóa sau quyết định `[OPEN] AIP7-OPENAPI-01`.
+Các fixture dùng dữ liệu giả và đã qua kiểm tĩnh cấm `userId`, email, password, API/access/refresh/device/FCM token. Runtime hiện sinh đúng 14 path/17 operation ID thuộc AIP2–AIP4; bốn path action proposal thuộc AIP6 vẫn là overlay. Theo `AIP7-OPENAPI-01` `[CONFIRMED]` (2026-11-14, phương án a), marker chỉ được xóa khi AIP6 sinh đủ bốn path action proposal.
 
 ### 5.3. Ma trận consent × miền dữ liệu
 
@@ -225,7 +226,7 @@ Fake provider trả 11 input + 7 output token và latency `3 ms`; với giá fix
 
 | Test | Thay đổi | Lý do | Đã chạy? |
 |---|---|---|---|
-| `OpenApiExportIT` | Khóa chính xác 14 runtime AI path/17 operation ID và so byte-equivalent toàn bộ contract ngoài AI; giữ ngoại lệ hẹp cho bốn path AIP6 | Không che drift ngoài AI trong khi action proposal còn hoãn | XANH trong cả ba full verify 2026-11-14; marker chờ `[OPEN] AIP7-OPENAPI-01` |
+| `OpenApiExportIT` | Khóa chính xác 14 runtime AI path/17 operation ID và so byte-equivalent toàn bộ contract ngoài AI; giữ ngoại lệ hẹp cho bốn path AIP6 | Không che drift ngoài AI trong khi action proposal còn hoãn | XANH trong cả ba full verify 2026-11-14; marker giữ theo `AIP7-OPENAPI-01` `[CONFIRMED]` (a) |
 | `ApiDocsProdProfileIT` | Cấp prod-profile test properties/Flyway riêng | `application-prod.yml` nay fail-fast và runtime production tắt Flyway | XANH 1/1 trong baseline 2026-11-11 |
 | `IdorMatrixIT` | Thêm sáu route AI có path variable, data setup và request body hợp lệ | Đảm bảo victim ID/random ID cùng 404, không đổi row/log | XANH trong cả ba full verify 2026-11-14 |
 
@@ -235,7 +236,7 @@ Test mới: `AiContractPublicationTest`, `ProductionDeploymentContractTest`. Kh�
 
 ## 7. Quyết định phát sinh `[CONFIRMED]` (2026-11-11)
 
-Tại thời điểm 2026-11-11 chưa có `[OPEN]` mới và người dùng đã duyệt nguyên trạng toàn bộ P-DWP2-01..P-DWP7-03. `[OPEN] AIP7-OPENAPI-01` phát sinh ngày 2026-11-14 được ghi ở Phụ lục B:
+Tại thời điểm 2026-11-11 chưa có `[OPEN]` mới và người dùng đã duyệt nguyên trạng toàn bộ P-DWP2-01..P-DWP7-03. `AIP7-OPENAPI-01` phát sinh ngày 2026-11-14 và đã `[CONFIRMED]` cùng ngày, ghi ở Phụ lục B:
 
 ### DWP2
 
@@ -278,8 +279,8 @@ Tại thời điểm 2026-11-11 chưa có `[OPEN]` mới và người dùng đã
 ## 8. Rủi ro và điểm cần người xem kỹ
 
 1. **Restore chưa chứng minh:** rủi ro GO lớn nhất; chưa có RPO/RTO/checksum/DB restore thực tế.
-2. **AIP1 overlay/AIP6 hoãn:** runtime sinh 14/18 path; cần quyết định `[OPEN] AIP7-OPENAPI-01` trước khi xóa marker hoặc đổi contract Flutter.
-3. **Private metrics producer thiếu:** backend chưa có Prometheus registry/secure scrape và job gauge; future rules cố ý tắt.
+2. **AIP1 overlay/AIP6 hoãn:** runtime sinh 14/18 path; theo `AIP7-OPENAPI-01` `[CONFIRMED]` (a), giữ overlay bốn path action proposal và không đổi contract Flutter tới khi mở AIP6.
+3. **Private metrics producer thiếu một phần:** gauge `lifeos.job.last_success{job}`/`lifeos.job.expected_interval{job}` đã có từ đợt sửa backend 2026-11-15; backend vẫn chưa có Prometheus registry/secure scrape; future rules (gồm `LifeOSJobStale`) vẫn cố ý tắt chờ DWP6 bật.
 4. **Trusted proxy:** chưa có CIDR/regex chính thức của platform; cấu hình sai ảnh hưởng IP rate limit/audit.
 5. **Workflow chưa chạy/pin digest:** action source còn cần lần chạy đầu, scan và khóa SHA/digest.
 6. **Mobile chưa release-ready:** Android còn ID mẫu/debug signing; iOS còn ID mẫu, thiếu team/privacy manifest; production diagnostics cần review.
@@ -310,7 +311,7 @@ Artifact/source hiện tại **chưa đủ để GO production** và chưa thể
 2. Staging thật để chạy migration, backup/restore, observability, rollback và smoke theo `PRODUCTION_READINESS.md`.
 3. OpenAI project/key/spend limit/ZDR, privacy/legal/store và mobile signing/account.
 
-Trạng thái chính thức: **AIP2 XONG (bằng chứng); AIP3 MỘT PHẦN; AIP4 XONG (bằng chứng); AIP7 MỘT PHẦN; `[OPEN] AIP7-OPENAPI-01` — NO-GO production**.
+Trạng thái chính thức: **AIP2 XONG (bằng chứng); AIP3 MỘT PHẦN; AIP4 XONG (bằng chứng); AIP7 MỘT PHẦN; `AIP7-OPENAPI-01` `[CONFIRMED]` (a) — NO-GO production**.
 
 ---
 
@@ -393,11 +394,11 @@ Run 3
 
 Tổng mỗi lượt: **879 test**, lớn hơn 847. Một lượt trước chuỗi đỏ do `MailpitDeliveryIT` timeout SMTP/container; test chạy riêng sau đó xanh 1/1, chuỗi được reset và ba lượt trên là ba lượt xanh liên tiếp.
 
-### B.3. OpenAPI và `[OPEN]`
+### B.3. OpenAPI và `AIP7-OPENAPI-01`
 
 Runtime sinh chính xác **14 AI path/17 operation ID** của AIP2–AIP4; `OpenApiExportIT` khóa tập này và vẫn kiểm byte-equivalent toàn bộ contract ngoài AI. Contract Flutter đã công bố vẫn là **18 path/42 schema/15 mã lỗi**. Bốn path action proposal thuộc AIP6 chưa có runtime vì AIP6 hoãn, nên marker overlay và ngoại lệ hẹp chưa thể xóa mà không làm mất hoặc thay đổi contract đã duyệt.
 
-`[OPEN] AIP7-OPENAPI-01`: người dùng cần chọn giữ overlay cho bốn path đến khi mở AIP6, hoặc duyệt tạm loại bốn path khỏi contract Flutter. Không có quyết định này, agent dừng đúng §11 và không tự đổi contract.
+~~`[OPEN] AIP7-OPENAPI-01`~~ → **`[CONFIRMED]` (2026-11-14) phương án (a):** giữ overlay cho đúng bốn path action proposal tới khi mở AIP6; ngoại lệ `OpenApiExportIT` thu hẹp về đúng bốn path này; không đổi contract Flutter 18 path/42 schema/15 mã lỗi. Chi tiết tại `DEPLOY_AI_PROGRESS.md` §14.6.
 
 ### B.4. NO-GO live
 

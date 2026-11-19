@@ -92,8 +92,8 @@ Chi tiết và lý do ở các file trong `docs/engineering/` (bắt đầu từ
 | Kiểm tra module boundary | `mvn -f backend/pom.xml test -Dtest=ArchitectureTest` (ArchUnit A1–A15) | đã chạy, đạt (nằm trong 169 unit) |
 | Benchmark (không chặn CI) | `mvn -f backend/pom.xml verify -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=BackendBenchmark` (ghi `backend/target/benchmark.md`) | đã chạy 2026-11-07, trong ngưỡng D173/D207 |
 | Xuất lại OpenAPI | `mvn -f backend/pom.xml verify -Dit.test=OpenApiExportIT -Dopenapi.export=true` (ghi `docs/api/openapi.yaml`) | đã chạy; `OpenApiExportIT` đỏ khi API đổi mà chưa xuất lại |
-| Mobile analyze | `flutter analyze` (trong `mobile/`) | đã chạy, xanh (0 lỗi, 0 cảnh báo) |
-| Mobile test | `flutter test` (trong `mobile/`) | đã chạy, 25/25 đạt (Vector, SQLite/Sync, 12 Module, UI/WCAG AA, E2E 9 luồng, Benchmark 50k bản ghi) |
+| Mobile analyze | `flutter analyze` / `dart analyze` (trong `mobile/`) | đã chạy 2026-11-15, xanh (`No issues found!`) |
+| Mobile test | `flutter test --no-pub -j 1` (trong `mobile/`) · benchmark 50k chạy riêng: `flutter test test/domain_modules_and_perf_test.dart` | đã chạy 2026-11-15 (sau AWP-1..6): 104 đạt, 1 bỏ qua (benchmark 50k chạy riêng, 11,0 s), 0 lỗi — xem `docs/review/MOBILE_AI_ASSISTANT_REPORT.md`. Mốc trước: 25/25 ngày 2026-11-08 |
 | Chạy local stack | Cả stack: `JWT_SECRET=… docker compose -f backend/docker-compose.yml up -d --build` (backend + PostgreSQL + Mailpit, email xem tại http://localhost:8025) · hoặc `docker compose -f backend/docker-compose.yml up -d postgres mailpit` rồi `mvn -f backend/pom.xml spring-boot:run -Dspring-boot.run.profiles=dev` | đã chạy thử cả stack (2026-11-07): ba dịch vụ healthy, email xác minh tới Mailpit |
 
 ---
@@ -142,6 +142,9 @@ Chi tiết và lý do ở các file trong `docs/engineering/` (bắt đầu từ
 | `docs/phases/PHASE_8_AI_ASSISTANT.md` | Phase 8 AI Assistant, consent/an toàn/hợp đồng/action proposal (D260–D299) | v1 — **đã duyệt 2026-11-10** |
 | `docs/engineering/DEPLOY_AI_MASTER_PLAN.md` | Kế hoạch Deploy DWP1–DWP8 và AI AIP1–AIP7 | v1 — **đã duyệt 2026-11-10** |
 | `docs/review/DEPLOY_AI_PROGRESS.md` | Nhật ký thực thi DWP/AIP, quyết định phát sinh và lệnh kiểm chứng | Đang thực hiện |
+| `docs/review/DEPLOY_AI_FINAL_REPORT.md` | Báo cáo Deploy + AI: AIP2/AIP4 xong, AIP3/AIP7 một phần, DWP8 **NO-GO production**, việc chờ con người | Cập nhật 2026-11-14 (đồng bộ 2026-11-19) |
+| `docs/review/MOBILE_AI_ASSISTANT_REPORT.md` | Nghiệm thu Trợ lý AI trên mobile (AWP-1..AWP-6), D-M09 | Hoàn thành 2026-11-15 — **chờ người dùng xem xét** |
+| `docs/review/PENDING_DECISIONS.md` | Sổ quyết định còn treo của backend, mobile, deploy/AI; mục còn mở ở §0 | Đồng bộ 2026-11-19 |
 
 Tài liệu trong `docs/phases/` và `BACKEND_MASTER_PLAN.md` **đã có hiệu lực** (người dùng duyệt 2026-11-07). Claude Code hoàn thiện toàn bộ backend theo `BACKEND_MASTER_PLAN.md` (WP1–WP8), làm liên tục, chỉ dừng theo §6 của kế hoạch đó.
 
